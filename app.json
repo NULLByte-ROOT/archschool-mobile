@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "ArchSchool",
+    "slug": "archschool",
+    "scheme": "archschool",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#060A11",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#060A11"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ir.vidxsepehr.archschool",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "package": "ir.vidxsepehr.archschool",
+      "adaptiveIcon": {
+        "backgroundColor": "#060A11",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["POST_NOTIFICATIONS"],
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-image",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#060A11",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#F2B455",
+          "defaultChannel": "default"
+        }
+      ]
+    ],
+    "updates": {
+      "url": "https://u.expo.dev/00000000-0000-0000-0000-000000000000",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      },
+      "apiUrl": "https://archschool.vidxsepehr.ir/api"
+    }
+  }
+}
