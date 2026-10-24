@@ -97,28 +97,60 @@ and paired with light haptics; never animate layout on every keystroke.
 
 ## 7. Push / OTA setup
 
-`app.json` ships placeholders:
+`app.json` is wired to the real EAS project:
 
-- `extra.eas.projectId` — filled by `npx eas-cli@latest init`
-- `updates.url` — filled by `npx eas-cli@latest update:configure`
+- `owner` — `voigkk25`
+- `extra.eas.projectId` — `b1760d58-a243-4784-a6ce-550590c5a82a`
+- `updates.url` — `https://u.expo.dev/b1760d58-a243-4784-a6ce-550590c5a82a`
+  (must always contain the project id above, otherwise EAS rejects the build)
 
-Until then push registration logs a message and skips; the app still works.
+Push registration logs a message and skips if the build has no EAS project.
 Expo Go on Android cannot receive remote push — use the `development` profile
 (`expo-dev-client` is installed) or `preview`/`production` APK. OTA uses
 `runtimeVersion.policy: appVersion`; bump `version` for native changes.
 
+`eas.json` must **not** contain a top-level `update` block — the current EAS CLI
+rejects it. Channels are declared on the build profiles only.
+
 ## 8. Commands
 
 ```bash
-npm install
+npm install                 # requires the committed .npmrc (see below)
 npm run typecheck
 npx expo export --platform android --output-dir .expo-export-test
 
+set EXPO_TOKEN=<token>      # cmd; PowerShell: $env:EXPO_TOKEN="<token>"
+npx eas-cli@latest build --platform android --profile preview --non-interactive   # APK
 npx eas-cli@latest build --platform android --profile development
-npx eas-cli@latest build --platform android --profile preview      # APK
 npx eas-cli@latest build --platform android --profile production   # AAB
-npx eas-cli@latest update --channel production --message "…"
+
+npx eas-cli@latest build:list --platform android --limit 5
+npx eas-cli@latest build:view <build-id>          # status + log URL
 ```
+
+`EXPO_TOKEN` is the only supported CI auth (never `eas login`); keep it in the
+environment, never in the repo.
+
+## 8.1 `.npmrc` is mandatory
+
+`package.json` intentionally overrides a few Expo-SDK-managed peers
+(`react` 19.3, `@shopify/flash-list`, `react-native-svg`, `reanimated`). npm 11
+on Linux therefore hits `ERESOLVE` during EAS `Install dependencies`, even
+though Windows only prints `npm warn ERESOLVE overriding peer dependency`.
+
+The committed root `.npmrc` fixes it:
+
+```
+legacy-peer-deps=true
+```
+
+Rules:
+
+- Never delete or git-ignore `.npmrc`; it must ship with every build.
+- `npm install` must run with it active — do not pass `--force`.
+- After changing any dependency, re-run `cmd /c "npx expo install --fix"` and
+  keep the `package-lock.json` diff in the same commit.
+- Do not hand-bump `react` / `react-native` / `expo-*` outside `expo install`.
 
 Backend deployment stays in the main repo: `./deploy.sh deploy` (blue-green),
 never bare `docker compose up`.

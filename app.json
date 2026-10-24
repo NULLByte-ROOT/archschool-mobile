@@ -18,7 +18,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "ir.vidxsepehr.archschool",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -30,7 +32,9 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["POST_NOTIFICATIONS"],
+      "permissions": [
+        "POST_NOTIFICATIONS"
+      ],
       "softwareKeyboardLayoutMode": "resize"
     },
     "web": {
@@ -60,7 +64,7 @@
       ]
     ],
     "updates": {
-      "url": "https://u.expo.dev/00000000-0000-0000-0000-000000000000",
+      "url": "https://u.expo.dev/b1760d58-a243-4784-a6ce-550590c5a82a",
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
@@ -70,9 +74,15 @@
     },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "b1760d58-a243-4784-a6ce-550590c5a82a"
       },
-      "apiUrl": "https://archschool.vidxsepehr.ir/api"
-    }
+      "apiUrl": "https://archschool.vidxsepehr.ir/api",
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      }
+    },
+    "owner": "voigkk25"
   }
 }
