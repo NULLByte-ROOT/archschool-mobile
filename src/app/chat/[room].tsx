@@ -5,12 +5,13 @@ import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Modal,
-  Platform,
+  PanResponder,
   Pressable,
   StyleSheet,
   TextInput,
@@ -76,6 +77,120 @@ function dayLabel(iso: string): string {
   return faDate(date, "full");
 }
 
+/**
+ * Swipe-to-reply (Telegram behaviour). The gesture is only claimed once the
+ * finger has moved horizontally more than vertically, so vertical scrolling and
+ * long-press still work normally inside the inverted FlashList.
+ *
+ * Layout is mirrored RTL: incoming bubbles hug the left edge, so they are
+ * swiped to the right (towards the centre) — the direction the app's users
+ * expect. Outgoing bubbles sit on the right and reply on a leftward swipe.
+ */
+function SwipeReply({
+  children,
+  onReply,
+  maxWidth,
+  own,
+}: {
+  children: ReactNode;
+  onReply: () => void;
+  maxWidth: string | number;
+  own: boolean;
+}) {
+  const tx = useRef(new Animated.Value(0)).current;
+  const armed = useRef(false);
+  const inward = own ? -1 : 1;
+
+  const responder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) > 12 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dx) > 12 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderMove: (_, gesture) => {
+          const towardCentre = gesture.dx * inward;
+          // Inward drag follows the finger (capped); outward is rubber-banded
+          // so the bubble never leaves the screen.
+          const next =
+            towardCentre > 0
+              ? inward * Math.min(towardCentre, 88)
+              : Math.max(Math.min(gesture.dx * 0.35, 30), -30);
+          tx.setValue(next);
+          armed.current = towardCentre > 58;
+        },
+        onPanResponderRelease: () => {
+          if (armed.current) {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+              () => undefined
+            );
+            onReply();
+          }
+          armed.current = false;
+          Animated.spring(tx, {
+            toValue: 0,
+            useNativeDriver: true,
+            speed: 20,
+            bounciness: 5,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          armed.current = false;
+          Animated.spring(tx, {
+            toValue: 0,
+            useNativeDriver: true,
+            speed: 20,
+            bounciness: 5,
+          }).start();
+        },
+      }),
+    [inward, onReply, tx]
+  );
+
+  const hintStyle = {
+    opacity: tx.interpolate({
+      inputRange: own ? [-58, -16, 0] : [0, 16, 58],
+      outputRange: own ? [1, 0.4, 0] : [0, 0.4, 1],
+      extrapolate: "clamp" as const,
+    }),
+    transform: [
+      {
+        scale: tx.interpolate({
+          inputRange: own ? [-58, 0] : [0, 58],
+          outputRange: own ? [1, 0.55] : [0.55, 1],
+          extrapolate: "clamp" as const,
+        }),
+      },
+    ],
+  };
+
+  return (
+    <View style={{ maxWidth, gap: 3 }}>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.swipeHint,
+          own ? styles.swipeHintRight : styles.swipeHintLeft,
+          hintStyle,
+        ]}
+      >
+        <Ionicons name="arrow-undo" size={16} color="#6cb2ea" />
+      </Animated.View>
+
+      <Animated.View
+        {...responder.panHandlers}
+        style={{ transform: [{ translateX: tx }] }}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
+
 function MessageBubble({
   message,
   own,
@@ -83,6 +198,7 @@ function MessageBubble({
   showDate,
   onLongPress,
   onImagePress,
+  onReply,
 }: {
   message: Message;
   own: boolean;
@@ -90,11 +206,12 @@ function MessageBubble({
   showDate: boolean;
   onLongPress: () => void;
   onImagePress: (url: string) => void;
+  onReply: () => void;
 }) {
   const image = message.file_url ? resolveMediaUrl(message.file_url) : null;
 
   return (
-    <View style={[styles.messageWrap, own ? styles.ownWrap : styles.otherWrap]}>
+    <View style={styles.messageWrap}>
       {showDate ? (
         <View style={styles.dayChip}>
           <AppText variant="caption" color={colors.faint} style={{ fontSize: 10 }}>
@@ -112,9 +229,9 @@ function MessageBubble({
           )
         ) : null}
 
-        <View style={{ maxWidth: "80%", gap: 3 }}>
+        <SwipeReply onReply={onReply} maxWidth={own ? "86%" : "84%"} own={own}>
           {!own && showAuthor ? (
-            <AppText variant="caption" color={colors.amber} style={{ fontFamily: fonts.medium }}>
+            <AppText variant="caption" color="#6cb2ea" style={{ fontFamily: fonts.medium }}>
               {message.sender_username ?? "همکلاسی"}
             </AppText>
           ) : null}
@@ -136,7 +253,7 @@ function MessageBubble({
               <View style={styles.replyQuote}>
                 <View style={styles.replyBar} />
                 <View style={{ flex: 1, gap: 1 }}>
-                  <AppText variant="caption" color={colors.amber} style={{ fontFamily: fonts.medium }}>
+                  <AppText variant="caption" color="#6cb2ea" style={{ fontFamily: fonts.medium }}>
                     {message.reply_to.sender_username ?? "پیام"}
                   </AppText>
                   <AppText variant="caption" color={colors.muted} numberOfLines={1}>
@@ -178,7 +295,7 @@ function MessageBubble({
               </AppText>
             </View>
           </Pressable>
-        </View>
+        </SwipeReply>
       </View>
     </View>
   );
@@ -212,6 +329,7 @@ export default function ChatRoomScreen() {
   const [editSaving, setEditSaving] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
 
   const messagesQuery = useQuery({
     queryKey: qk.messages(room),
@@ -411,6 +529,13 @@ export default function ChatRoomScreen() {
     setEditText(message.content);
   };
 
+  const startReply = (message: Message) => {
+    setReplyTo(message);
+    setActionMessage(null);
+    // Let the reply bar mount before pulling up the keyboard.
+    setTimeout(() => inputRef.current?.focus(), 60);
+  };
+
   const saveEdit = async () => {
     if (!editTarget || editSaving) return;
     const content = editText.trim();
@@ -499,6 +624,7 @@ export default function ChatRoomScreen() {
         showDate={showDate}
         onLongPress={() => setActionMessage(item)}
         onImagePress={setViewerUrl}
+        onReply={() => startReply(item)}
       />
     );
   };
@@ -559,7 +685,8 @@ export default function ChatRoomScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={0}
       >
         {messagesQuery.isLoading ? (
           <View style={styles.center}>
@@ -656,6 +783,7 @@ export default function ChatRoomScreen() {
 
           <View style={styles.inputWrap}>
             <TextInput
+              ref={inputRef}
               value={input}
               onChangeText={setInput}
               placeholder="پیام…"
@@ -734,10 +862,7 @@ export default function ChatRoomScreen() {
             </View>
 
             <Pressable
-              onPress={() => {
-                setReplyTo(actionMessage);
-                setActionMessage(null);
-              }}
+              onPress={() => startReply(actionMessage)}
               style={styles.menuRow}
             >
               <View style={styles.menuIcon}>
@@ -911,10 +1036,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
-  messageWrap: { width: "100%" },
-  // RTL Telegram layout: my messages hug the right edge, everyone else's the left.
-  ownWrap: { alignItems: "flex-end" },
-  otherWrap: { alignItems: "flex-start" },
+  messageWrap: { width: "100%", alignItems: "stretch" },
   dayChip: {
     alignSelf: "center",
     paddingHorizontal: 8,
@@ -926,13 +1048,31 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   messageRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     gap: 6,
     marginVertical: 1.5,
   },
-  ownRow: { justifyContent: "flex-start" },
-  otherRow: { justifyContent: "flex-end" },
+  // Telegram RTL layout: my messages hug the right edge, everyone else's the
+  // left — with the avatar sitting at the far left, immediately beside the
+  // bubble (same as the web client).
+  ownRow: { justifyContent: "flex-end" },
+  otherRow: { justifyContent: "flex-start" },
+  swipeHint: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -13,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(43,82,120,0.35)",
+    borderWidth: 1,
+    borderColor: "rgba(108,178,234,0.35)",
+  },
+  swipeHintLeft: { left: 2 },
+  swipeHintRight: { right: 2 },
   bubble: {
     paddingHorizontal: spacing.sm,
     paddingTop: 7,
@@ -943,13 +1083,13 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   ownBubble: {
-    backgroundColor: "rgba(242,180,85,0.14)",
-    borderColor: "rgba(242,180,85,0.26)",
+    backgroundColor: "#2b5278",
+    borderColor: "rgba(255,255,255,0.08)",
     borderBottomRightRadius: 6,
   },
   otherBubble: {
-    backgroundColor: "rgba(255,255,255,0.045)",
-    borderColor: colors.line,
+    backgroundColor: "#182533",
+    borderColor: "rgba(255,255,255,0.06)",
     borderBottomLeftRadius: 6,
   },
   messageText: { fontSize: 14.5, lineHeight: 23 },
@@ -970,7 +1110,7 @@ const styles = StyleSheet.create({
   replyBar: {
     width: 2.5,
     borderRadius: 2,
-    backgroundColor: colors.amber,
+    backgroundColor: "#4fa3e3",
   },
   messageImage: {
     width: 214,

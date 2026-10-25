@@ -5,7 +5,6 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -74,7 +73,7 @@ export default function LoginScreen() {
   return (
     <Screen edges={["top", "bottom"]} grid>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
         style={styles.flex}
       >
         <ScrollView

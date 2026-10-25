@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
@@ -90,13 +89,11 @@ export function GlassCard({
     <View
       style={[
         styles.glass,
-        { borderColor: glow ? colors.amberLine : colors.line },
+        { borderColor: glow ? colors.amberLine : "rgba(255,255,255,0.08)" },
         glow ? { boxShadow: shadows.amber } : null,
         style,
       ]}
     >
-      <BlurView intensity={26} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={styles.glassTint} pointerEvents="none" />
       <View style={[styles.glassContent, contentStyle]}>{children}</View>
     </View>
   );
@@ -294,26 +291,21 @@ export function SkeletonRows({ count = 3, height = 74 }: { count?: number; heigh
 }
 
 const styles = StyleSheet.create({
+  // Mirrors the web `.panel` on pointer-coarse screens: near-opaque graphite,
+  // 1px white/8 border, 16px radius and no backdrop blur (the web disables
+  // glassmorphism on mobile for performance as well).
   glass: {
-    borderRadius: radius.lg,
+    borderRadius: 16,
     borderWidth: 1,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.03)",
-  },
-  glassTint: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.28)",
+    backgroundColor: "rgba(9,9,14,0.92)",
   },
   glassContent: { padding: spacing.md },
   solid: {
-    borderRadius: radius.md,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.panel,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(9,9,14,0.92)",
     overflow: "hidden",
     boxShadow: shadows.card,
   },
