@@ -4,6 +4,7 @@ import { Image } from "expo-image";
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 
+import { resolveMediaUrl } from "@/api/client";
 import { colors, fonts, gradients, radius } from "@/theme/tokens";
 import { initials } from "@/lib/format";
 
@@ -116,6 +117,7 @@ export function Avatar({
   style?: StyleProp<ViewStyle>;
 }) {
   const dimension = AVATAR_SIZE[size];
+  const resolved = resolveMediaUrl(uri);
   return (
     <View
       style={[
@@ -132,9 +134,9 @@ export function Avatar({
         style,
       ]}
     >
-      {uri ? (
+      {resolved ? (
         <Image
-          source={{ uri }}
+          source={{ uri: resolved }}
           style={{ width: "100%", height: "100%" }}
           contentFit="cover"
           transition={180}
@@ -142,11 +144,11 @@ export function Avatar({
         />
       ) : (
         <LinearGradient
-          colors={["#22344B", "#121E2E"]}
+          colors={["#27272a", "#111113"]}
           style={StyleSheet.absoluteFill}
         />
       )}
-      {!uri ? (
+      {!resolved ? (
         <AppText
           variant="strong"
           color={colors.amber}

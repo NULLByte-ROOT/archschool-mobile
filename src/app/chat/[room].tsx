@@ -22,6 +22,7 @@ import {
   ApiError,
   clearChat,
   deleteMessage,
+  editMessage,
   fetchAssignment,
   fetchMessages,
   fetchTeam,
@@ -167,6 +168,11 @@ function MessageBubble({
               {message.is_pinned ? (
                 <Ionicons name="pin" size={10} color={colors.amber} />
               ) : null}
+              {message.edited_at ? (
+                <AppText variant="caption" color={colors.faint} style={{ fontSize: 9 }}>
+                  ویرایش‌شده
+                </AppText>
+              ) : null}
               <AppText variant="caption" color={colors.faint} ltr style={{ fontSize: 9.5 }}>
                 {faDate(message.created_at, "time")}
               </AppText>
@@ -201,6 +207,9 @@ export default function ChatRoomScreen() {
   const [pendingImage, setPendingImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const [editTarget, setEditTarget] = useState<Message | null>(null);
+  const [editText, setEditText] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -259,6 +268,12 @@ export default function ChatRoomScreen() {
       setMessages((current) => current.filter((message) => message.id !== event.id));
     } else if (event.type === "clear") {
       setMessages([]);
+    } else if (event.type === "edit") {
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === event.message.id ? event.message : message
+        )
+      );
     } else if (event.type === "pin") {
       setMessages((current) =>
         current.map((message) => ({
@@ -388,6 +403,38 @@ export default function ChatRoomScreen() {
         },
       ]
     );
+  };
+
+  const startEdit = (message: Message) => {
+    setActionMessage(null);
+    setEditTarget(message);
+    setEditText(message.content);
+  };
+
+  const saveEdit = async () => {
+    if (!editTarget || editSaving) return;
+    const content = editText.trim();
+    if (!content && !editTarget.file_url) {
+      Alert.alert("پیام خالی است", "متن پیام را وارد کن.");
+      return;
+    }
+    setEditSaving(true);
+    try {
+      const updated = await editMessage(editTarget.id, content);
+      setMessages((current) =>
+        current.map((message) => (message.id === updated.id ? updated : message))
+      );
+      setEditTarget(null);
+      setEditText("");
+      void queryClient.invalidateQueries({ queryKey: qk.chatOverview });
+    } catch (error) {
+      Alert.alert(
+        "خطا",
+        error instanceof ApiError ? error.message : "ویرایش انجام نشد."
+      );
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const confirmDelete = (message: Message) => {
@@ -701,6 +748,23 @@ export default function ChatRoomScreen() {
               </AppText>
             </Pressable>
 
+            {actionMessage.sender_id === user?.id ? (
+              <>
+                <Divider />
+                <Pressable
+                  onPress={() => startEdit(actionMessage)}
+                  style={styles.menuRow}
+                >
+                  <View style={styles.menuIcon}>
+                    <Ionicons name="pencil-outline" size={17} color={colors.amber} />
+                  </View>
+                  <AppText variant="label" style={{ flex: 1 }}>
+                    ویرایش پیام
+                  </AppText>
+                </Pressable>
+              </>
+            ) : null}
+
             {canDelete ? (
               <>
                 <Divider />
@@ -719,6 +783,11 @@ export default function ChatRoomScreen() {
                     {actionMessage.is_pinned ? "برداشتن پین" : "پین کردن پیام"}
                   </AppText>
                 </Pressable>
+              </>
+            ) : null}
+
+            {canDelete || actionMessage.sender_id === user?.id ? (
+              <>
                 <Divider />
                 <Pressable
                   onPress={() => confirmDelete(actionMessage)}
@@ -735,6 +804,54 @@ export default function ChatRoomScreen() {
             ) : null}
           </>
         ) : null}
+      </Sheet>
+
+      <Sheet
+        visible={editTarget !== null}
+        onClose={() => {
+          if (!editSaving) setEditTarget(null);
+        }}
+        title="ویرایش پیام"
+        subtitle="فقط متن پیام تغییر می‌کند"
+        footer={
+          <View style={styles.editActions}>
+            <Pressable
+              onPress={() => {
+                if (!editSaving) setEditTarget(null);
+              }}
+              style={[styles.editButton, styles.editCancel]}
+              disabled={editSaving}
+            >
+              <AppText variant="label" color={colors.muted}>
+                انصراف
+              </AppText>
+            </Pressable>
+            <Pressable
+              onPress={() => void saveEdit()}
+              style={[styles.editButton, styles.editSave, editSaving && { opacity: 0.6 }]}
+              disabled={editSaving}
+            >
+              <AppText variant="label" color={colors.black} style={{ fontFamily: fonts.bold }}>
+                {editSaving ? "در حال ذخیره…" : "ذخیره"}
+              </AppText>
+            </Pressable>
+          </View>
+        }
+      >
+        <View style={styles.editInputWrap}>
+          <TextInput
+            value={editText}
+            onChangeText={setEditText}
+            placeholder="متن پیام…"
+            placeholderTextColor={colors.faint}
+            multiline
+            autoFocus
+            maxLength={5000}
+            selectionColor={colors.amber}
+            style={styles.editInput}
+            textAlignVertical="top"
+          />
+        </View>
       </Sheet>
 
       <Modal
@@ -795,8 +912,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   messageWrap: { width: "100%" },
-  ownWrap: { alignItems: "flex-start" },
-  otherWrap: { alignItems: "flex-end" },
+  // RTL Telegram layout: my messages hug the right edge, everyone else's the left.
+  ownWrap: { alignItems: "flex-end" },
+  otherWrap: { alignItems: "flex-start" },
   dayChip: {
     alignSelf: "center",
     paddingHorizontal: 8,
@@ -825,20 +943,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   ownBubble: {
-    backgroundColor: "rgba(242,180,85,0.15)",
-    borderColor: "rgba(242,180,85,0.28)",
-    borderBottomLeftRadius: 6,
+    backgroundColor: "rgba(242,180,85,0.14)",
+    borderColor: "rgba(242,180,85,0.26)",
+    borderBottomRightRadius: 6,
   },
   otherBubble: {
-    backgroundColor: colors.panel,
+    backgroundColor: "rgba(255,255,255,0.045)",
     borderColor: colors.line,
-    borderBottomRightRadius: 6,
+    borderBottomLeftRadius: 6,
   },
   messageText: { fontSize: 14.5, lineHeight: 23 },
   messageMeta: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    alignSelf: "flex-start",
+    alignSelf: "flex-end",
     gap: 4,
   },
   replyQuote: {
@@ -870,7 +988,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(12,21,34,0.92)",
+    backgroundColor: "rgba(14,14,17,0.94)",
   },
   pendingThumb: { width: 38, height: 38, borderRadius: radius.xs },
   composer: {
@@ -881,7 +999,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
-    backgroundColor: colors.inkRaised,
+    backgroundColor: "rgba(0,0,0,0.92)",
   },
   attach: {
     width: 42,
@@ -898,7 +1016,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: colors.panel,
+    backgroundColor: "rgba(255,255,255,0.04)",
     paddingHorizontal: spacing.sm,
     minHeight: 42,
     justifyContent: "center",
@@ -946,9 +1064,45 @@ const styles = StyleSheet.create({
   actionPreview: {
     padding: spacing.sm,
     borderRadius: radius.sm,
-    backgroundColor: colors.panel,
+    backgroundColor: "rgba(255,255,255,0.035)",
     borderWidth: 1,
     borderColor: colors.line,
+  },
+  editInputWrap: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  editInput: {
+    minHeight: 104,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 14.5,
+    lineHeight: 23,
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
+  editActions: {
+    flexDirection: "row-reverse",
+    gap: spacing.sm,
+  },
+  editButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editCancel: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  editSave: {
+    backgroundColor: colors.amber,
   },
   viewer: {
     flex: 1,

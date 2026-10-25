@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import {
@@ -35,6 +36,7 @@ import {
   SolidCard,
   StatTile,
 } from "@/components/cards";
+import { SchoolStatusCard } from "@/components/SchoolStatusCard";
 import { Screen } from "@/components/Screen";
 import { WeekBars } from "@/components/WeekBars";
 import { useNow } from "@/hooks/useNow";
@@ -312,9 +314,47 @@ export default function DashboardScreen() {
             </AppText>
           </View>
           <View style={styles.headerMark}>
-            <Ionicons name="school-outline" size={18} color={colors.amber} />
+            <Image
+              source={require("../../../assets/logo.png")}
+              style={{ width: 26, height: 26 }}
+              contentFit="contain"
+              cachePolicy="memory-disk"
+            />
           </View>
         </View>
+
+        <Animated.View
+          entering={FadeInDown.duration(420).delay(40)}
+          style={{ paddingHorizontal: screenGutter, marginBottom: spacing.md }}
+        >
+          <SchoolStatusCard onPress={() => router.push("/timetable")} />
+        </Animated.View>
+
+        <Animated.View
+          entering={FadeInDown.duration(440).delay(90)}
+          style={{ paddingHorizontal: screenGutter, marginBottom: spacing.md }}
+        >
+          <Pressable onPress={() => router.push("/assignments")}>
+            <GlassCard glow contentStyle={styles.assignCard}>
+              <View style={styles.assignIcon}>
+                <Ionicons name="checkbox" size={22} color={colors.black} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                <AppText variant="subtitle" style={{ fontFamily: fonts.bold }}>
+                  تکالیف من
+                </AppText>
+                <AppText variant="caption" color={colors.muted} numberOfLines={1}>
+                  {pending.length
+                    ? `${fmtNum(pending.length)} تکلیف باقی‌مانده · نزدیک‌ترین: ${pending[0].title}`
+                    : "همه‌چیز تحویل شده است"}
+                </AppText>
+              </View>
+              <View style={styles.assignGo}>
+                <Ionicons name="arrow-back" size={18} color={colors.black} />
+              </View>
+            </GlassCard>
+          </Pressable>
+        </Animated.View>
 
         {overview.isError && !overview.data ? (
           <SolidCard style={{ marginHorizontal: screenGutter, marginBottom: spacing.md }}>
@@ -423,7 +463,7 @@ export default function DashboardScreen() {
 
             <Animated.View entering={FadeInDown.duration(460).delay(80)} style={styles.section}>
               <SectionTitle
-                title="رتبه‌های برتر"
+                title="لیدر بورد"
                 actionLabel="همه"
                 onAction={() => router.push("/leaderboard")}
               />
@@ -552,6 +592,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  assignCard: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  assignIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+  },
+  assignGo: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
   },
   heroContent: { padding: spacing.lg, gap: 0 },
   heroRow: { flexDirection: "row-reverse", alignItems: "flex-end", gap: spacing.md },

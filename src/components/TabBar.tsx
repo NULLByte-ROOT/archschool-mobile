@@ -22,7 +22,7 @@ const TABS: Record<
   home: { label: "خانه", icon: "grid-outline", activeIcon: "grid" },
   assignments: { label: "تکالیف", icon: "checkbox-outline", activeIcon: "checkbox" },
   chat: { label: "گفتگو", icon: "chatbubbles-outline", activeIcon: "chatbubbles" },
-  leaderboard: { label: "رتبه‌ها", icon: "podium-outline", activeIcon: "podium" },
+  leaderboard: { label: "لیدر بورد", icon: "podium-outline", activeIcon: "podium" },
   profile: { label: "پروفایل", icon: "person-circle-outline", activeIcon: "person-circle" },
 };
 
@@ -147,7 +147,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.lineStrong,
-    backgroundColor: "rgba(9,16,27,0.72)",
+    backgroundColor: "rgba(10,10,12,0.78)",
     overflow: "hidden",
     height: 62,
     paddingHorizontal: 4,
@@ -159,7 +159,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(7,12,20,0.35)",
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
   item: { flex: 1, alignItems: "center", justifyContent: "center", gap: 2 },
   itemInner: {

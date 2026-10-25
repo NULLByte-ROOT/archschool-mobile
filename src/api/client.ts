@@ -7,6 +7,7 @@ import type {
   Message,
   PublicUser,
   Role,
+  SchoolSchedule,
   TeamMember,
   TeamOverview,
   UnreadRoom,
@@ -201,6 +202,10 @@ export function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
   return request<LeaderboardEntry[]>("/stats/leaderboard");
 }
 
+export function fetchSchoolSchedule(): Promise<SchoolSchedule> {
+  return request<SchoolSchedule>("/schedule");
+}
+
 export function fetchUserStats(userId: number): Promise<LeaderboardEntry> {
   return request<LeaderboardEntry>(`/stats/users/${userId}`);
 }
@@ -287,6 +292,13 @@ export function sendMessage(data: MessageInput): Promise<Message> {
   return request<Message>("/messages/", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+}
+
+export function editMessage(id: number, content: string): Promise<Message> {
+  return request<Message>(`/messages/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content }),
   });
 }
 
@@ -451,6 +463,7 @@ export const qk = {
   me: ["me"] as const,
   overview: ["overview"] as const,
   leaderboard: ["leaderboard"] as const,
+  schedule: ["school-schedule"] as const,
   userStats: (id: number) => ["user-stats", id] as const,
   assignments: ["assignments"] as const,
   assignment: (id: number) => ["assignment", id] as const,

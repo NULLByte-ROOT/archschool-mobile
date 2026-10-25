@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -13,7 +14,6 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { ApiError, login, register } from "@/api/client";
-import { ArchMark } from "@/components/ArchMark";
 import { Button } from "@/components/Button";
 import { GlassCard } from "@/components/cards";
 import { Field } from "@/components/Field";
@@ -84,7 +84,12 @@ export default function LoginScreen() {
         >
           <Animated.View entering={FadeInDown.duration(480)} style={styles.brand}>
             <View style={styles.mark}>
-              <ArchMark size={30} />
+              <Image
+                source={require("../../assets/logo.png")}
+                style={{ width: 30, height: 30 }}
+                contentFit="contain"
+                cachePolicy="memory-disk"
+              />
             </View>
             <View style={{ gap: 0 }}>
               <AppText
@@ -221,9 +226,9 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.amberSoft,
+    backgroundColor: "#000000",
     borderWidth: 1,
-    borderColor: colors.amberLine,
+    borderColor: colors.lineStrong,
   },
   headline: { fontSize: 34, lineHeight: 46 },
   lede: { marginTop: 4, maxWidth: 320 },

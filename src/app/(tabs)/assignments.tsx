@@ -133,10 +133,23 @@ function AssignmentRow({
           >
             {assignment.title}
           </AppText>
+          {assignment.description ? (
+            <AppText
+              variant="caption"
+              color={colors.textSoft}
+              numberOfLines={2}
+              style={{ lineHeight: 19 }}
+            >
+              {assignment.description}
+            </AppText>
+          ) : null}
           <View style={styles.meta}>
             <AppText variant="caption" color={colors.faint} numberOfLines={1} style={{ flexShrink: 1 }}>
               {assignment.course || "بدون درس"}
-              {assignment.subtype ? ` · ${categoryItemLabel(assignment.subtype)}` : ""}
+              {" · "}
+              {assignment.subtype
+                ? categoryItemLabel(assignment.subtype)
+                : "بدون دسته"}
             </AppText>
             <View style={styles.dot} />
             <AppText

@@ -205,7 +205,7 @@ export default function LeaderboardScreen() {
   return (
     <Screen edges={["top"]}>
       <Header
-        title="جدول رتبه‌ها"
+        title="لیدر بورد"
         subtitle={
           entries.length ? `${fmtNum(entries.length)} عضو در رقابت` : "در حال بارگذاری"
         }

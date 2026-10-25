@@ -15,7 +15,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="home" options={{ title: "خانه" }} />
       <Tabs.Screen name="assignments" options={{ title: "تکالیف" }} />
       <Tabs.Screen name="chat" options={{ title: "گفتگو" }} />
-      <Tabs.Screen name="leaderboard" options={{ title: "رتبه‌ها" }} />
+      <Tabs.Screen name="leaderboard" options={{ title: "لیدر بورد" }} />
       <Tabs.Screen name="profile" options={{ title: "پروفایل" }} />
     </Tabs>
   );

@@ -103,6 +103,7 @@ export interface Message {
   file_url: string | null;
   reply_to: ReplyPreview | null;
   is_pinned: boolean;
+  edited_at?: string | null;
   created_at: string;
 }
 
@@ -115,6 +116,17 @@ export interface Attachment {
   file_url: string;
   file_name: string;
   created_at: string;
+}
+
+export interface SchoolPeriod {
+  period_number: number;
+  start_time: string;
+  end_time: string;
+}
+
+export interface SchoolSchedule {
+  periods: SchoolPeriod[];
+  updated_at?: string | null;
 }
 
 export interface UploadResult {

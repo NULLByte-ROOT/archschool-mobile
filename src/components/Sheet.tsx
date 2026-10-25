@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, justifyContent: "flex-end" },
   keyboard: { flex: 1, justifyContent: "flex-end" },
   sheet: {
-    backgroundColor: "#0B1421",
+    backgroundColor: "#0c0c10",
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
     borderWidth: 1,

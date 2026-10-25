@@ -66,7 +66,7 @@ export function Field({
           styles.field,
           {
             borderColor,
-            backgroundColor: focused ? "rgba(20,33,51,0.9)" : "rgba(12,21,34,0.82)",
+            backgroundColor: focused ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.035)",
             minHeight: multiline ? 96 : 50,
           },
         ]}

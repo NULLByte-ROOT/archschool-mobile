@@ -1,41 +1,41 @@
 /**
  * ArchSchool's visual tokens.
  *
- * Direction: a "midnight blueprint" — deep navy paper, hairline drafting grid,
- * one warm signal amber for streaks and deadlines. Glass is reserved for chrome
- * (tab bar, sheets, hero) so long lists stay cheap to scroll on Android.
+ * Mirrors the web app: true-black paper, neutral graphite panels and
+ * `rgba(255,255,255,0.03)` glass. Amber stays as the single warm signal for
+ * streaks/deadlines; everything else is monochrome.
  */
 
 export const colors = {
-  ink: "#05090F",
-  inkRaised: "#080E18",
-  panel: "#0C1522",
-  panelSolid: "#101B2C",
-  panelSoft: "rgba(16,27,44,0.66)",
-  line: "rgba(148,178,214,0.14)",
-  lineStrong: "rgba(148,178,214,0.26)",
-  text: "#F2F7FE",
-  textSoft: "#C9D7E8",
-  muted: "#8CA1BA",
-  faint: "#5B7088",
+  ink: "#000000",
+  inkRaised: "#060608",
+  panel: "#0b0b0f",
+  panelSolid: "#131318",
+  panelSoft: "rgba(255,255,255,0.035)",
+  line: "rgba(255,255,255,0.10)",
+  lineStrong: "rgba(255,255,255,0.18)",
+  text: "#fafafa",
+  textSoft: "#d4d4d8",
+  muted: "#a1a1aa",
+  faint: "#71717a",
   amber: "#F2B455",
   amberDeep: "#C98A2E",
-  amberSoft: "rgba(242,180,85,0.14)",
-  amberLine: "rgba(242,180,85,0.35)",
+  amberSoft: "rgba(242,180,85,0.12)",
+  amberLine: "rgba(242,180,85,0.32)",
   teal: "#4FD1B5",
-  tealSoft: "rgba(79,209,181,0.14)",
+  tealSoft: "rgba(79,209,181,0.12)",
   red: "#F2686B",
-  redSoft: "rgba(242,104,107,0.14)",
-  blue: "#6A9BFF",
-  blueSoft: "rgba(106,155,255,0.14)",
+  redSoft: "rgba(242,104,107,0.12)",
+  blue: "#8AB4FF",
+  blueSoft: "rgba(138,180,255,0.12)",
   white: "#FFFFFF",
   black: "#000000",
 } as const;
 
 export const gradients = {
-  hero: ["#162538", "#0A121E"] as const,
-  heroGlow: ["rgba(242,180,85,0.20)", "rgba(242,180,85,0)"] as const,
-  screen: ["#08101B", "#05090F"] as const,
+  hero: ["#18181b", "#050506"] as const,
+  heroGlow: ["rgba(242,180,85,0.18)", "rgba(242,180,85,0)"] as const,
+  screen: ["#09090b", "#000000"] as const,
   amber: ["#F7C978", "#E8A53C"] as const,
   danger: ["#F2686B", "#B73B4B"] as const,
 };

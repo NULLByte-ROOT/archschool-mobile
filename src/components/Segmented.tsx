@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: "rgba(12,21,34,0.72)",
+    backgroundColor: "rgba(255,255,255,0.03)",
   },
   item: {
     flex: 1,

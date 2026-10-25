@@ -8,6 +8,7 @@ import { useAuthStore } from "@/store/auth";
 export type RoomSocketEvent =
   | { type: "clear"; room: string }
   | { type: "delete"; id: number }
+  | { type: "edit"; message: Message }
   | { type: "pin"; message: Message };
 
 interface RoomHandlers {
@@ -103,6 +104,11 @@ export function useRoomSocket(room: string | null, handlers: RoomHandlers) {
           handlersRef.current.onEvent?.({
             type: "clear",
             room: typeof data.room === "string" ? data.room : room,
+          });
+        } else if (frame.type === "edit" && frame.data) {
+          handlersRef.current.onEvent?.({
+            type: "edit",
+            message: frame.data as Message,
           });
         } else if (frame.type === "pin" && frame.data) {
           handlersRef.current.onEvent?.({
