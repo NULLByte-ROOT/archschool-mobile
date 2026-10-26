@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList } from "@shopify/flash-list";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState, type ComponentRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode } from "react";
 import {
   Alert,
   Animated,
@@ -15,8 +16,10 @@ import {
   Pressable,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
+import Animated2, { FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -27,9 +30,11 @@ import {
   fetchAssignment,
   fetchMessages,
   fetchTeam,
+  markMessageRead,
   markRoomRead,
   pinMessage,
   qk,
+  readRoomBatch,
   resolveMediaUrl,
   sendMessage,
   unpinMessage,
@@ -41,8 +46,9 @@ import { Header } from "@/components/Header";
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar, Divider } from "@/components/ui";
+import { UserProfileModal } from "@/components/UserProfileModal";
 import { useRoomSocket, type RoomSocketEvent } from "@/hooks/useRoomSocket";
-import { parseRoom } from "@/lib/chat";
+import { dmRoom, parseRoom } from "@/lib/chat";
 import {
   calendarDayDiff,
   faDate,
@@ -53,6 +59,14 @@ import { useAuthStore } from "@/store/auth";
 import { colors, fonts, radius, spacing } from "@/theme/tokens";
 
 const LOCKED = "برای دسترسی به گفتگو، از ادمین اجازه بگیرید.";
+const SEND_FADE_MS = 150;
+
+/** A long-press menu anchored to the touch point (Telegram's inline menu). */
+interface MenuAnchor {
+  message: Message;
+  x: number;
+  y: number;
+}
 
 function mergeMessages(current: Message[], incoming: Message[]): Message[] {
   const map = new Map<number, Message>();
@@ -199,16 +213,22 @@ function MessageBubble({
   onLongPress,
   onImagePress,
   onReply,
+  onProfile,
+  onSeenInfo,
 }: {
   message: Message;
   own: boolean;
   showAuthor: boolean;
   showDate: boolean;
-  onLongPress: () => void;
+  onLongPress: (point: { x: number; y: number }) => void;
   onImagePress: (url: string) => void;
   onReply: () => void;
+  onProfile: (userId: number) => void;
+  onSeenInfo: (message: Message) => void;
 }) {
   const image = message.file_url ? resolveMediaUrl(message.file_url) : null;
+  // Telegram ticks: one tick = delivered, double = at least one reader.
+  const seenCount = message.seen_by?.length ?? 0;
 
   return (
     <View style={styles.messageWrap}>
@@ -223,7 +243,13 @@ function MessageBubble({
       <View style={[styles.messageRow, own ? styles.ownRow : styles.otherRow]}>
         {!own ? (
           showAuthor ? (
-            <Avatar name={message.sender_username} uri={message.sender_avatar_url} size="xs" />
+            <Pressable
+              onPress={() => onProfile(message.sender_id)}
+              hitSlop={6}
+              accessibilityLabel="پروفایل فرستنده"
+            >
+              <Avatar name={message.sender_username} uri={message.sender_avatar_url} size="xs" />
+            </Pressable>
           ) : (
             <View style={{ width: 28 }} />
           )
@@ -231,19 +257,27 @@ function MessageBubble({
 
         <SwipeReply onReply={onReply} maxWidth={own ? "86%" : "84%"} own={own}>
           {!own && showAuthor ? (
-            <AppText variant="caption" color="#6cb2ea" style={{ fontFamily: fonts.medium }}>
+            <AppText
+              variant="caption"
+              color="#6cb2ea"
+              style={{ fontFamily: fonts.medium }}
+              onPress={() => onProfile(message.sender_id)}
+            >
               {message.sender_username ?? "همکلاسی"}
             </AppText>
           ) : null}
 
           <Pressable
-            onLongPress={() => {
+            onLongPress={(event) => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(
                 () => undefined
               );
-              onLongPress();
+              onLongPress({
+                x: event.nativeEvent.pageX,
+                y: event.nativeEvent.pageY,
+              });
             }}
-            delayLongPress={280}
+            delayLongPress={260}
             style={[
               styles.bubble,
               own ? styles.ownBubble : styles.otherBubble,
@@ -293,6 +327,24 @@ function MessageBubble({
               <AppText variant="caption" color={colors.faint} ltr style={{ fontSize: 9.5 }}>
                 {faDate(message.created_at, "time")}
               </AppText>
+              {own ? (
+                <Pressable
+                  onPress={() => onSeenInfo(message)}
+                  hitSlop={8}
+                  style={styles.tickButton}
+                  accessibilityLabel={
+                    seenCount > 0
+                      ? `دیده‌شده توسط ${seenCount} نفر`
+                      : "ارسال شد"
+                  }
+                >
+                  <Ionicons
+                    name={seenCount > 0 ? "checkmark-done" : "checkmark"}
+                    size={13}
+                    color={seenCount > 0 ? colors.accent : colors.faint}
+                  />
+                </Pressable>
+              ) : null}
             </View>
           </Pressable>
         </SwipeReply>
@@ -323,13 +375,19 @@ export default function ChatRoomScreen() {
   const [sending, setSending] = useState(false);
   const [pendingImage, setPendingImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [actionMessage, setActionMessage] = useState<Message | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const [infoMessage, setInfoMessage] = useState<Message | null>(null);
+  const [profileId, setProfileId] = useState<number | null>(null);
+  const [forwardFor, setForwardFor] = useState<Message | null>(null);
+  const [forwarding, setForwarding] = useState(false);
   const [editTarget, setEditTarget] = useState<Message | null>(null);
   const [editText, setEditText] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const [viewerUrl, setViewerUrl] = useState<string | null>(null);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const window = useWindowDimensions();
+  const pendingSends = useRef(new Set<number>());
 
   const messagesQuery = useQuery({
     queryKey: qk.messages(room),
@@ -341,7 +399,8 @@ export default function ChatRoomScreen() {
   const team = useQuery({
     queryKey: qk.team,
     queryFn: fetchTeam,
-    enabled: parsed.kind === "dm" && !blocked,
+    // Needed for the DM header and for "forward to…" in every room type.
+    enabled: !blocked,
   });
 
   const assignment = useQuery({
@@ -381,6 +440,18 @@ export default function ChatRoomScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [room, messages.length]);
 
+  // Opening a room writes one receipt per unseen message, so every sender's
+  // single tick becomes a double tick live. The same call clears the badge.
+  useEffect(() => {
+    if (!room || blocked) return;
+    const timer = setTimeout(() => {
+      readRoomBatch(room)
+        .then(() => queryClient.invalidateQueries({ queryKey: qk.unread }))
+        .catch(() => undefined);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [blocked, queryClient, room]);
+
   const onSocketEvent = (event: RoomSocketEvent) => {
     if (event.type === "delete") {
       setMessages((current) => current.filter((message) => message.id !== event.id));
@@ -399,12 +470,42 @@ export default function ChatRoomScreen() {
           is_pinned: message.id === event.message.id,
         }))
       );
+    } else if (event.type === "read") {
+      if (event.readerId === user?.id) return;
+      const ids = new Set(event.messageIds);
+      const receipt = {
+        username: event.readerUsername,
+        read_at: event.readAt,
+      };
+      setMessages((current) =>
+        current.map((message) => {
+          if (!ids.has(message.id)) return message;
+          const existing = message.seen_by ?? [];
+          if (
+            existing.some(
+              (entry) =>
+                entry.username === receipt.username &&
+                entry.read_at === receipt.read_at
+            )
+          ) {
+            return message;
+          }
+          return { ...message, seen_by: [...existing, receipt] };
+        })
+      );
     }
   };
 
   const { connected } = useRoomSocket(blocked ? null : room || null, {
-    onMessage: (message) =>
-      setMessages((current) => mergeMessages(current, [message])),
+    onMessage: (message) => {
+      setMessages((current) => mergeMessages(current, [message]));
+      // The room is open, so this message is read the moment it arrives.
+      if (message.sender_id !== user?.id) {
+        void markMessageRead(message.id)
+          .then(() => markRoomRead(room))
+          .catch(() => undefined);
+      }
+    },
     onEvent: onSocketEvent,
   });
 
@@ -451,15 +552,51 @@ export default function ChatRoomScreen() {
     const text = input.trim();
     if (!text && !pendingImage) return;
 
+    // Optimistic bubble: the tick appears immediately, the upload (if any) and
+    // the POST happen behind it, and the server row replaces it in place.
+    const tempId = -Date.now();
+    pendingSends.current.add(tempId);
+    const optimistic: Message = {
+      id: tempId,
+      sender_id: user?.id ?? 0,
+      sender_username: user?.username ?? null,
+      sender_avatar_url: user?.avatar_url ?? null,
+      receiver_id: peerId ?? null,
+      assignment_id: assignmentId ?? null,
+      content: text,
+      file_url: pendingImage?.uri ?? null,
+      reply_to: replyTo
+        ? {
+            id: replyTo.id,
+            sender_id: replyTo.sender_id,
+            sender_username: replyTo.sender_username,
+            content: replyTo.content,
+            file_url: replyTo.file_url,
+          }
+        : null,
+      is_pinned: false,
+      created_at: new Date().toISOString(),
+      seen_by: [],
+    };
+
+    const image = pendingImage;
+    setMessages((current) => mergeMessages(current, [optimistic]));
+    setInput("");
+    setReplyTo(null);
+    setPendingImage(null);
     setSending(true);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+      () => undefined
+    );
+
     try {
       let fileUrl: string | null = null;
-      if (pendingImage) {
+      if (image) {
         const uploaded = await uploadFile({
-          uri: pendingImage.uri,
-          name: pendingImage.fileName ?? `chat-${Date.now()}.jpg`,
-          type: pendingImage.mimeType ?? "image/jpeg",
-          size: pendingImage.fileSize,
+          uri: image.uri,
+          name: image.fileName ?? `chat-${Date.now()}.jpg`,
+          type: image.mimeType ?? "image/jpeg",
+          size: image.fileSize,
         });
         fileUrl = uploaded.url;
       }
@@ -472,21 +609,24 @@ export default function ChatRoomScreen() {
         reply_to_id: replyTo?.id ?? null,
       });
 
-      setMessages((current) => mergeMessages(current, [created]));
-      setInput("");
-      setReplyTo(null);
-      setPendingImage(null);
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
-        () => undefined
+      setMessages((current) =>
+        mergeMessages(
+          current.filter((message) => message.id !== tempId),
+          [created]
+        )
       );
       void queryClient.invalidateQueries({ queryKey: qk.chatOverview });
       void queryClient.invalidateQueries({ queryKey: qk.recentComments });
       void queryClient.invalidateQueries({ queryKey: qk.unread });
     } catch (error) {
+      setMessages((current) => current.filter((message) => message.id !== tempId));
+      setInput(text);
+      if (image) setPendingImage(image);
       const message =
         error instanceof ApiError ? error.message : "پیام ارسال نشد. دوباره تلاش کن.";
       Alert.alert("ارسال نشد", message);
     } finally {
+      pendingSends.current.delete(tempId);
       setSending(false);
     }
   };
@@ -524,16 +664,58 @@ export default function ChatRoomScreen() {
   };
 
   const startEdit = (message: Message) => {
-    setActionMessage(null);
+    setMenuAnchor(null);
     setEditTarget(message);
     setEditText(message.content);
   };
 
   const startReply = (message: Message) => {
     setReplyTo(message);
-    setActionMessage(null);
+    setMenuAnchor(null);
     // Let the reply bar mount before pulling up the keyboard.
     setTimeout(() => inputRef.current?.focus(), 60);
+  };
+
+  const copyMessage = async (message: Message) => {
+    const text = message.content.trim();
+    setMenuAnchor(null);
+    if (!text) {
+      Alert.alert("کپی", "این پیام متنی ندارد.");
+      return;
+    }
+    try {
+      await Clipboard.setStringAsync(text);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined
+      );
+    } catch {
+      Alert.alert("کپی", "کپی متن ممکن نشد.");
+    }
+  };
+
+  const forwardMessage = async (message: Message, target: "global" | number) => {
+    if (forwarding) return;
+    setForwarding(true);
+    try {
+      await sendMessage({
+        content: message.content,
+        file_url: message.file_url,
+        receiver_id: typeof target === "number" ? target : null,
+        assignment_id: null,
+      });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined
+      );
+      setForwardFor(null);
+      void queryClient.invalidateQueries({ queryKey: qk.chatOverview });
+    } catch (error) {
+      Alert.alert(
+        "ارسال نشد",
+        error instanceof ApiError ? error.message : "هدایت پیام انجام نشد."
+      );
+    } finally {
+      setForwarding(false);
+    }
   };
 
   const saveEdit = async () => {
@@ -573,7 +755,7 @@ export default function ChatRoomScreen() {
             try {
               await deleteMessage(message.id);
               setMessages((current) => current.filter((item) => item.id !== message.id));
-              setActionMessage(null);
+              setMenuAnchor(null);
               void queryClient.invalidateQueries({ queryKey: qk.chatOverview });
             } catch (error) {
               Alert.alert(
@@ -600,7 +782,7 @@ export default function ChatRoomScreen() {
           is_pinned: item.id === updated.id ? updated.is_pinned : false,
         }))
       );
-      setActionMessage(null);
+      setMenuAnchor(null);
     } catch (error) {
       Alert.alert(
         "خطا",
@@ -612,6 +794,89 @@ export default function ChatRoomScreen() {
   const canSend = Boolean(input.trim() || pendingImage) && !sending;
   const data = useMemo(() => [...messages].reverse(), [messages]);
 
+  /* ---- inline long-press menu (Telegram's small anchored card) ---- */
+  const MENU_WIDTH = 190;
+  const MENU_ROW = 42;
+  const anchorMessage = menuAnchor?.message ?? null;
+  const menuActions: {
+    key: string;
+    icon: ComponentProps<typeof Ionicons>["name"];
+    label: string;
+    tone?: string;
+    run: () => void;
+  }[] = [];
+  if (anchorMessage) {
+    menuActions.push({
+      key: "reply",
+      icon: "arrow-undo-outline",
+      label: "پاسخ",
+      run: () => startReply(anchorMessage),
+    });
+    if (anchorMessage.content.trim()) {
+      menuActions.push({
+        key: "copy",
+        icon: "copy-outline",
+        label: "کپی متن",
+        run: () => void copyMessage(anchorMessage),
+      });
+    }
+    menuActions.push({
+      key: "forward",
+      icon: "arrow-redo-outline",
+      label: "هدایت به…",
+      run: () => {
+        setMenuAnchor(null);
+        setForwardFor(anchorMessage);
+      },
+    });
+    if (canDelete) {
+      menuActions.push({
+        key: "pin",
+        icon: anchorMessage.is_pinned ? "pin-outline" : "pin",
+        label: anchorMessage.is_pinned ? "برداشتن پین" : "پین",
+        run: () => void togglePin(anchorMessage),
+      });
+    }
+    if (anchorMessage.sender_id === user?.id) {
+      menuActions.push({
+        key: "edit",
+        icon: "pencil-outline",
+        label: "ویرایش",
+        run: () => startEdit(anchorMessage),
+      });
+    }
+    if (canDelete || anchorMessage.sender_id === user?.id) {
+      menuActions.push({
+        key: "delete",
+        icon: "trash-outline",
+        label: "حذف",
+        tone: colors.red,
+        run: () => {
+          setMenuAnchor(null);
+          confirmDelete(anchorMessage);
+        },
+      });
+    }
+  }
+  const menuHeight = menuActions.length * MENU_ROW + 12;
+  const menuTop = menuAnchor
+    ? Math.max(
+        insets.top + 12,
+        Math.min(
+          menuAnchor.y + menuHeight + 28 > window.height - insets.bottom
+            ? menuAnchor.y - menuHeight - 12
+            : menuAnchor.y + 12,
+          window.height - insets.bottom - menuHeight - 12
+        )
+      )
+    : 0;
+  const menuLeft = menuAnchor
+    ? Math.min(
+        Math.max(12, menuAnchor.x - MENU_WIDTH / 2),
+        window.width - MENU_WIDTH - 12
+      )
+    : 0;
+
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const older = data[index + 1];
     const showAuthor = !older || older.sender_id !== item.sender_id;
@@ -622,9 +887,11 @@ export default function ChatRoomScreen() {
         own={item.sender_id === user?.id}
         showAuthor={showAuthor}
         showDate={showDate}
-        onLongPress={() => setActionMessage(item)}
+        onLongPress={(point) => setMenuAnchor({ message: item, ...point })}
         onImagePress={setViewerUrl}
         onReply={() => startReply(item)}
+        onProfile={setProfileId}
+        onSeenInfo={setInfoMessage}
       />
     );
   };
@@ -810,7 +1077,7 @@ export default function ChatRoomScreen() {
             <Ionicons
               name="send"
               size={18}
-              color={canSend ? "#171004" : colors.faint}
+              color={canSend ? colors.onAccent : colors.faint}
             />
           </Pressable>
         </View>
@@ -847,89 +1114,159 @@ export default function ChatRoomScreen() {
         </View>
       </Sheet>
 
-      <Sheet
-        visible={actionMessage !== null}
-        onClose={() => setActionMessage(null)}
-        title="پیام"
-        subtitle={actionMessage?.sender_username ?? undefined}
+      {/* Long-press menu — small card anchored to the bubble, above or below. */}
+      <Modal
+        visible={menuAnchor !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setMenuAnchor(null)}
       >
-        {actionMessage ? (
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => setMenuAnchor(null)}
+        >
+          <Animated2.View
+            entering={FadeIn.duration(SEND_FADE_MS)}
+            style={[
+              styles.contextMenu,
+              { width: MENU_WIDTH, top: menuTop, left: menuLeft },
+            ]}
+          >
+            {menuActions.map((action, index) => (
+              <Pressable
+                key={action.key}
+                onPress={action.run}
+                style={({ pressed }) => [
+                  styles.contextRow,
+                  { height: MENU_ROW },
+                  index > 0 && styles.contextRowBorder,
+                  pressed && styles.contextRowPressed,
+                ]}
+              >
+                <Ionicons
+                  name={action.icon}
+                  size={16}
+                  color={action.tone ?? colors.textSoft}
+                />
+                <AppText
+                  color={action.tone ?? colors.text}
+                  style={styles.contextLabel}
+                >
+                  {action.label}
+                </AppText>
+              </Pressable>
+            ))}
+          </Animated2.View>
+        </Pressable>
+      </Modal>
+
+      {/* Message info — who has seen it and when (from the double tick). */}
+      <Sheet
+        visible={infoMessage !== null}
+        onClose={() => setInfoMessage(null)}
+        title="مشاهده پیام"
+        subtitle={
+          infoMessage?.seen_by?.length
+            ? `${infoMessage.seen_by.length} نفر دیده‌اند`
+            : "هنوز کسی ندیده"
+        }
+      >
+        {infoMessage?.content.trim() ? (
+          <View style={styles.actionPreview}>
+            <AppText variant="body" color={colors.textSoft} numberOfLines={3}>
+              {infoMessage.content}
+            </AppText>
+          </View>
+        ) : null}
+
+        {(infoMessage?.seen_by ?? []).length === 0 ? (
+          <View style={styles.infoEmpty}>
+            <Ionicons name="checkmark" size={16} color={colors.faint} />
+            <AppText variant="caption" color={colors.faint} style={{ flex: 1 }}>
+              پیام ارسال شده اما هنوز کسی آن را باز نکرده است.
+            </AppText>
+          </View>
+        ) : (
+          (infoMessage?.seen_by ?? []).map((receipt, index) => (
+            <View
+              key={`${receipt.username ?? "user"}-${receipt.read_at}-${index}`}
+              style={styles.menuRow}
+            >
+              <Avatar name={receipt.username} size="xs" />
+              <View style={{ flex: 1, gap: 1 }}>
+                <AppText
+                  variant="label"
+                  ltr
+                  numberOfLines={1}
+                  style={{ fontFamily: fonts.semibold }}
+                >
+                  {receipt.username ?? "کاربر"}
+                </AppText>
+                <AppText variant="caption" color={colors.faint} ltr style={{ fontSize: 10.5 }}>
+                  {faDate(receipt.read_at, "weekdayTime")}
+                </AppText>
+              </View>
+              <Ionicons name="checkmark-done" size={15} color={colors.accent} />
+            </View>
+          ))
+        )}
+      </Sheet>
+
+      {/* Forward — pick the class room or one teammate. */}
+      <Sheet
+        visible={forwardFor !== null}
+        onClose={() => setForwardFor(null)}
+        title="هدایت پیام"
+        subtitle="به کدام گفتگو؟"
+      >
+        {forwardFor ? (
           <>
             <View style={styles.actionPreview}>
-              <AppText variant="body" color={colors.textSoft} numberOfLines={4}>
-                {actionMessage.content.trim() || "📷 تصویر"}
+              <AppText variant="body" color={colors.textSoft} numberOfLines={3}>
+                {forwardFor.content.trim() || "📷 تصویر"}
               </AppText>
             </View>
 
             <Pressable
-              onPress={() => startReply(actionMessage)}
+              onPress={() => void forwardMessage(forwardFor, "global")}
               style={styles.menuRow}
+              disabled={forwarding}
             >
               <View style={styles.menuIcon}>
-                <Ionicons name="arrow-undo-outline" size={17} color={colors.amber} />
+                <Ionicons name="people-outline" size={17} color={colors.accent} />
               </View>
               <AppText variant="label" style={{ flex: 1 }}>
-                پاسخ به این پیام
+                گفتگوی کلاس
               </AppText>
             </Pressable>
 
-            {actionMessage.sender_id === user?.id ? (
-              <>
-                <Divider />
+            {(team.data ?? [])
+              .filter((person) => person.id !== user?.id)
+              .map((person) => (
                 <Pressable
-                  onPress={() => startEdit(actionMessage)}
+                  key={person.id}
+                  onPress={() => void forwardMessage(forwardFor, person.id)}
                   style={styles.menuRow}
+                  disabled={forwarding}
                 >
-                  <View style={styles.menuIcon}>
-                    <Ionicons name="pencil-outline" size={17} color={colors.amber} />
-                  </View>
-                  <AppText variant="label" style={{ flex: 1 }}>
-                    ویرایش پیام
+                  <Avatar name={person.username} uri={person.avatar_url} size="xs" />
+                  <AppText
+                    variant="label"
+                    ltr
+                    style={{ flex: 1, fontFamily: fonts.semibold }}
+                    numberOfLines={1}
+                  >
+                    {person.username}
                   </AppText>
+                  <Ionicons name="arrow-redo-outline" size={15} color={colors.faint} />
                 </Pressable>
-              </>
-            ) : null}
-
-            {canDelete ? (
-              <>
-                <Divider />
-                <Pressable
-                  onPress={() => void togglePin(actionMessage)}
-                  style={styles.menuRow}
-                >
-                  <View style={styles.menuIcon}>
-                    <Ionicons
-                      name={actionMessage.is_pinned ? "pin-outline" : "pin"}
-                      size={17}
-                      color={colors.amber}
-                    />
-                  </View>
-                  <AppText variant="label" style={{ flex: 1 }}>
-                    {actionMessage.is_pinned ? "برداشتن پین" : "پین کردن پیام"}
-                  </AppText>
-                </Pressable>
-              </>
-            ) : null}
-
-            {canDelete || actionMessage.sender_id === user?.id ? (
-              <>
-                <Divider />
-                <Pressable
-                  onPress={() => confirmDelete(actionMessage)}
-                  style={styles.menuRow}
-                >
-                  <View style={[styles.menuIcon, { backgroundColor: colors.redSoft, borderColor: "rgba(242,104,107,0.3)" }]}>
-                    <Ionicons name="trash-outline" size={17} color={colors.red} />
-                  </View>
-                  <AppText variant="label" color={colors.red} style={{ flex: 1 }}>
-                    حذف پیام
-                  </AppText>
-                </Pressable>
-              </>
-            ) : null}
+              ))}
           </>
         ) : null}
       </Sheet>
+
+      <UserProfileModal userId={profileId} onClose={() => setProfileId(null)} />
 
       <Sheet
         visible={editTarget !== null}
@@ -1098,6 +1435,49 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "flex-end",
     gap: 4,
+  },
+  tickButton: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    paddingHorizontal: 1,
+  },
+  /* ---- inline long-press menu ---- */
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  contextMenu: {
+    position: "absolute",
+    paddingVertical: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.white12,
+    backgroundColor: "rgba(20,20,24,0.98)",
+    overflow: "hidden",
+  },
+  contextRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+  },
+  contextRowBorder: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(255,255,255,0.07)",
+  },
+  contextRowPressed: {
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+  contextLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  infoEmpty: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
   },
   replyQuote: {
     flexDirection: "row-reverse",

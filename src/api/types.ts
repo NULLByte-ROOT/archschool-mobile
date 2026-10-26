@@ -83,6 +83,11 @@ export interface TeamMember {
   is_self: boolean;
 }
 
+export interface ReadReceipt {
+  username: string | null;
+  read_at: string;
+}
+
 export interface ReplyPreview {
   id: number;
   sender_id: number;
@@ -105,6 +110,8 @@ export interface Message {
   is_pinned: boolean;
   edited_at?: string | null;
   created_at: string;
+  /** Everyone except the sender who opened this message (double-tick source). */
+  seen_by?: ReadReceipt[];
 }
 
 export interface Attachment {
@@ -153,6 +160,18 @@ export interface UnreadRoom {
 export interface UnreadSummary {
   rooms: UnreadRoom[];
   total: number;
+}
+
+export interface ReadBatchResult {
+  room: string;
+  message_ids: number[];
+  read_at: string;
+}
+
+export interface NotificationPreferences {
+  chat: boolean;
+  assignments: boolean;
+  deadlines: boolean;
 }
 
 export interface LoginResponse {

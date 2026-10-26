@@ -546,7 +546,7 @@ function WorkloadPanel({ items, now }: { items: Assignment[]; now: number }) {
 
 function SubjectsPanel({ items }: { items: Assignment[] }) {
   const slices = useMemo(() => {
-    const palette = ["#fafafa", "#a5b4fc", "#6ee7b7", "#fbbf24", "#f87171", "#94a3b8"];
+    const palette = ["#fafafa", "#a5b4fc", "#6ee7b7", "#e4e4e7", "#f87171", "#94a3b8"];
     const counts = new Map<string, number>();
     for (const item of items) {
       if (!item.subject_id) continue;
@@ -1029,7 +1029,7 @@ export default function AssignmentsScreen() {
         }
       >
         {/* header */}
-        <Animated.View entering={FadeInDown.duration(320)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180)} style={{ marginBottom: 16 }}>
           <Kicker text="assignments" dot style={{ marginBottom: 10 }} />
           <View style={styles.headerRow}>
             <View style={{ flexShrink: 1, minWidth: 0 }}>
@@ -1062,11 +1062,11 @@ export default function AssignmentsScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(320).delay(20)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180).delay(20)} style={{ marginBottom: 16 }}>
           <SchoolStatusStrip />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(360).delay(40)}>
+        <Animated.View entering={FadeInDown.duration(180).delay(40)}>
           <WorkloadPanel items={all} now={now} />
           <SubjectsPanel items={all} />
           <ActivityPanel
@@ -1260,7 +1260,7 @@ export default function AssignmentsScreen() {
 
                 <View style={{ gap: 12 }}>
                   {group.items.map((item, index) => (
-                    <Animated.View key={item.id} entering={FadeInDown.duration(240).delay(Math.min(index * 20, 120))}>
+                    <Animated.View key={item.id} entering={FadeInDown.duration(180).delay(Math.min(index * 20, 120))}>
                       <AssignmentCard
                         assignment={item}
                         view={view}

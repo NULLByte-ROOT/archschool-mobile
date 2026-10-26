@@ -31,7 +31,7 @@ export function Button({
   const height = size === "sm" ? 40 : 50;
 
   const textColor =
-    variant === "primary" ? "#171004" : variant === "danger" ? colors.red : colors.text;
+    variant === "primary" ? "#09090b" : variant === "danger" ? colors.red : colors.text;
   const borderColor =
     variant === "ghost"
       ? colors.lineStrong

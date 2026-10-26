@@ -53,11 +53,25 @@ export const colors = {
   bodyCopy: "#ededed", // body colour
 
   /* ---------- accents ---------- */
-  /** Web `--color-warning`; streaks, medals, the active tab. */
-  amber: "#FBBF24",
-  amberDeep: "#F59E0B",
-  amberSoft: "rgba(251,191,36,0.12)",
-  amberLine: "rgba(251,191,36,0.32)",
+  /**
+   * Primary accent — the web app's white (`--color-fg-100` / white buttons).
+   * `amber*` names are kept as aliases so no screen silently loses its accent
+   * after the theme moved from yellow to white.
+   */
+  accent: "#f4f4f5",
+  accentDeep: "#e4e4e7",
+  accentSoft: "rgba(255,255,255,0.08)",
+  accentLine: "rgba(255,255,255,0.18)",
+  /** @deprecated use `accent`; kept for existing screens. */
+  amber: "#f4f4f5",
+  /** @deprecated use `accentDeep`. */
+  amberDeep: "#e4e4e7",
+  /** @deprecated use `accentSoft`. */
+  amberSoft: "rgba(255,255,255,0.08)",
+  /** @deprecated use `accentLine`. */
+  amberLine: "rgba(255,255,255,0.18)",
+  /** Dark-on-white label colour for filled buttons. */
+  onAccent: "#09090b",
   /** orange-400 — the flame in the web streak hero. */
   flame: "#FB923C",
   flameSoft: "rgba(251,146,60,0.15)",
@@ -107,9 +121,11 @@ export const colors = {
 
 export const gradients = {
   hero: ["#18181b", "#050506"] as const,
-  heroGlow: ["rgba(251,191,36,0.18)", "rgba(251,191,36,0)"] as const,
+  heroGlow: ["rgba(255,255,255,0.10)", "rgba(255,255,255,0)"] as const,
   screen: ["#000000", "#000000"] as const,
-  amber: ["#FCD34D", "#F59E0B"] as const,
+  /** Primary button: white -> zinc-200 (dark label on top). */
+  amber: ["#ffffff", "#e4e4e7"] as const,
+  whiteButton: ["#ffffff", "#e4e4e7"] as const,
   flame: ["#FB923C", "#F97316"] as const,
   danger: ["#F87171", "#B73B4B"] as const,
   /** The web streak number: #fafafa -> #fef3c7 -> #fb923c. */
@@ -160,7 +176,8 @@ export const tabBarReserve = tabBarHeight + tabBarMargin;
 export const shadows = {
   card: "0px 18px 38px -26px rgba(0,0,0,0.95)",
   lift: "0px 24px 48px -22px rgba(0,0,0,0.9)",
-  amber: "0px 10px 30px -12px rgba(251,191,36,0.45)",
+  /** No accent glow: the web keeps flat surfaces on phones. */
+  amber: "0px 18px 38px -26px rgba(0,0,0,0.95)",
   /** Floating glass pill: soft drop shadow, iOS-26 style. */
   glass: "0px 18px 44px -12px rgba(0,0,0,0.85)",
 } as const;

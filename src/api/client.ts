@@ -5,7 +5,9 @@ import type {
   LeaderboardEntry,
   LoginResponse,
   Message,
+  NotificationPreferences,
   PublicUser,
+  ReadBatchResult,
   Role,
   SchoolSchedule,
   TeamMember,
@@ -15,6 +17,7 @@ import type {
   UploadResult,
   User,
 } from "./types";
+import * as FileSystem from "expo-file-system/legacy";
 
 /**
  * Production API. `EXPO_PUBLIC_API_URL` lets a development build point at a
@@ -192,6 +195,26 @@ export function unregisterPushToken(token: string): Promise<void> {
   });
 }
 
+/** Server-side notification switches for this device (Settings page). */
+export function fetchNotificationPreferences(): Promise<NotificationPreferences> {
+  return request<NotificationPreferences>("/users/push-token/preferences");
+}
+
+export function updateNotificationPreferences(
+  prefs: NotificationPreferences,
+  token?: string | null
+): Promise<NotificationPreferences> {
+  return request<NotificationPreferences>("/users/push-token/preferences", {
+    method: "PATCH",
+    body: JSON.stringify({
+      chat: prefs.chat,
+      assignments: prefs.assignments,
+      deadlines: prefs.deadlines,
+      token: token || null,
+    }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Team + stats
 // ---------------------------------------------------------------------------
@@ -272,6 +295,10 @@ export function fetchAttachments(id: number): Promise<Attachment[]> {
   return request<Attachment[]>(`/assignments/${id}/attachments`);
 }
 
+export function deleteAttachment(attachmentId: number): Promise<void> {
+  return request<void>(`/attachments/${attachmentId}`, { method: "DELETE" });
+}
+
 // ---------------------------------------------------------------------------
 // Chat
 // ---------------------------------------------------------------------------
@@ -338,9 +365,25 @@ export function fetchUnread(): Promise<UnreadSummary> {
 }
 
 export function markRoomRead(room: string): Promise<UnreadRoom> {
-  return request<UnreadRoom>(`/messages/${encodeURIComponent(room)}/read`, {
+  return request<UnreadRoom>(`/messages/rooms/${encodeURIComponent(room)}/read`, {
     method: "POST",
   });
+}
+
+/**
+ * Mark every unseen message of a room as read (ticks + unread bookmark in one
+ * call). Mirrors the web client's `readRoomBatch`.
+ */
+export function readRoomBatch(room: string, upToId?: number): Promise<ReadBatchResult> {
+  return request<ReadBatchResult>("/messages/read-batch", {
+    method: "POST",
+    body: JSON.stringify({ room, up_to_id: upToId ?? null }),
+  });
+}
+
+/** Record a single receipt (a message that arrived while the room was open). */
+export function markMessageRead(id: number): Promise<Message> {
+  return request<Message>(`/messages/${id}/read`, { method: "POST" });
 }
 
 export function pinMessage(id: number): Promise<Message> {
@@ -395,32 +438,126 @@ export function deleteUser(id: number): Promise<void> {
 // ---------------------------------------------------------------------------
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
-export async function uploadFile(file: {
+const MIME_BY_EXT: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  avif: "image/avif",
+  bmp: "image/bmp",
+  pdf: "application/pdf",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+};
+
+function extensionOf(name: string): string {
+  const match = /\.([a-z0-9]{1,6})$/i.exec(name.trim());
+  return match ? match[1].toLowerCase() : "";
+}
+
+/** Pick a trustworthy MIME type: declared type, then extension, then path. */
+function uploadMimeType(declared: string | undefined, name: string, uri: string): string {
+  const candidate = (declared || "").trim().toLowerCase();
+  if (candidate && candidate !== "application/octet-stream") return candidate;
+  for (const value of [name, uri]) {
+    const ext = extensionOf(value.split("?")[0] ?? "");
+    if (ext && MIME_BY_EXT[ext]) return MIME_BY_EXT[ext];
+  }
+  return "image/jpeg";
+}
+
+/** A multipart part needs a filename the server can derive an extension from. */
+function uploadName(declared: string | undefined, uri: string, mime: string): string {
+  const cleaned = (declared || "").trim().replace(/[\\/:*?"<>|]+/g, "-");
+  if (cleaned && extensionOf(cleaned)) return cleaned;
+  const fallbackExt =
+    Object.entries(MIME_BY_EXT).find(([, value]) => value === mime)?.[0] ?? "jpg";
+  const tail = uri.split("?")[0]?.split("/").pop() ?? "";
+  if (tail && extensionOf(tail) && !tail.startsWith(".")) return tail;
+  return `upload-${Date.now()}.${fallbackExt}`;
+}
+
+function uploadError(status: number, body: string): ApiError {
+  let detail = "";
+  try {
+    detail = detailMessage(JSON.parse(body), "");
+  } catch {
+    detail = body.slice(0, 200);
+  }
+  if (status === 413) {
+    return new ApiError("حجم فایل از حد مجاز سرور بیشتر است (حداکثر ۲۵ مگابایت).", 413);
+  }
+  return new ApiError(detail || "آپلود فایل ناموفق بود.", status);
+}
+
+export interface PickedFile {
   uri: string;
   name: string;
   type: string;
   size?: number;
-}): Promise<UploadResult> {
+}
+
+/**
+ * Upload one picked file to any multipart endpoint.
+ *
+ * Two transports on purpose:
+ *  1. `expo-file-system`'s native multipart uploader — it streams from the
+ *     photo-picker cache with OkHttp/NSURLSession, so neither a `content://`
+ *     URI nor a JS-side `FormData` polyfill quirk can break it. This is what
+ *     made "pick an image → Send" fail instantly before.
+ *  2. The classic RN `FormData` request, kept as a fallback for any URI the
+ *     native uploader refuses.
+ */
+async function uploadTo<T>(path: string, file: PickedFile): Promise<T> {
   if (file.size && file.size > MAX_UPLOAD_BYTES) {
     throw new ApiError("حجم فایل نباید بیشتر از ۲۵ مگابایت باشد.", 413);
+  }
+
+  const mime = uploadMimeType(file.type, file.name, file.uri);
+  const name = uploadName(file.name, file.uri, mime);
+  const endpoint = apiUrl(path);
+
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+
+  try {
+    const result = await FileSystem.uploadAsync(endpoint, file.uri, {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: "file",
+      mimeType: mime,
+      headers,
+    });
+    if (result.status === 401) {
+      unauthorizedHandler?.();
+      throw new ApiError("نشست شما منقضی شده است. دوباره وارد شوید.", 401);
+    }
+    if (result.status < 200 || result.status >= 300) {
+      throw uploadError(result.status, result.body ?? "");
+    }
+    return JSON.parse(result.body) as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    // Fall through to the JS transport below.
   }
 
   const form = new FormData();
   // React Native accepts this `{uri,name,type}` object and streams the file.
   form.append("file", {
     uri: file.uri,
-    name: file.name,
-    type: file.type,
+    name,
+    type: mime,
   } as unknown as Blob);
-
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120000);
   let response: Response;
   try {
-    response = await fetch(apiUrl("/uploads/"), {
+    response = await fetch(endpoint, {
       method: "POST",
       headers,
       body: form,
@@ -437,16 +574,29 @@ export async function uploadFile(file: {
     throw new ApiError("نشست شما منقضی شده است. دوباره وارد شوید.", 401);
   }
   if (!response.ok) {
+    const payload = await response.json().catch(() => null);
     if (response.status === 413) {
       throw new ApiError("حجم فایل از حد مجاز سرور بیشتر است (حداکثر ۲۵ مگابایت).", 413);
     }
-    const payload = await response.json().catch(() => null);
     throw new ApiError(
       detailMessage(payload, "آپلود فایل ناموفق بود."),
       response.status
     );
   }
-  return (await response.json()) as UploadResult;
+  return (await response.json()) as T;
+}
+
+/** Upload an avatar / chat image / comment image. */
+export function uploadFile(file: PickedFile): Promise<UploadResult> {
+  return uploadTo<UploadResult>("/uploads", file);
+}
+
+/** Upload a file straight onto an assignment (web: `POST /assignments/{id}/attachments`). */
+export function addAttachment(
+  assignmentId: number,
+  file: PickedFile
+): Promise<Attachment> {
+  return uploadTo<Attachment>(`/assignments/${assignmentId}/attachments`, file);
 }
 
 const mediaCache = new Map<string, string>();
@@ -457,7 +607,7 @@ export function resolveMediaUrl(url: string | null | undefined): string {
   if (cached !== undefined) return cached;
 
   let resolved = url;
-  if (/^https?:\/\//i.test(url)) resolved = url;
+  if (/^(https?|file|content|data|blob):/i.test(url)) resolved = url;
   else if (url.startsWith("/")) resolved = `${ORIGIN}${url}`;
   else resolved = `${ORIGIN}/${url}`;
 
@@ -473,6 +623,7 @@ export function roomSocketUrl(room: string, token: string): string {
 /** Server-shaped React Query keys, so invalidations never miss a variant. */
 export const qk = {
   me: ["me"] as const,
+  user: (id: number) => ["user", id] as const,
   overview: ["overview"] as const,
   leaderboard: ["leaderboard"] as const,
   schedule: ["school-schedule"] as const,
@@ -487,4 +638,5 @@ export const qk = {
   recentComments: ["recent-comments"] as const,
   users: ["users"] as const,
   team: ["team"] as const,
+  notificationPrefs: ["notification-prefs"] as const,
 };

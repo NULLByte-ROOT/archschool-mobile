@@ -295,7 +295,7 @@ export default function NewAssignmentScreen() {
           keyboardShouldPersistTaps="handled"
         >
           {/* header */}
-          <Animated.View entering={FadeInDown.duration(320)} style={{ marginBottom: 16 }}>
+          <Animated.View entering={FadeInDown.duration(180)} style={{ marginBottom: 16 }}>
             <Kicker
               text={editing ? "edit assignment" : "new assignment"}
               dot
@@ -349,7 +349,7 @@ export default function NewAssignmentScreen() {
               </AppText>
             </Panel>
           ) : (
-            <Animated.View entering={FadeInDown.duration(340).delay(20)}>
+            <Animated.View entering={FadeInDown.duration(180).delay(20)}>
               <Panel corners contentStyle={styles.panelPad}>
                 {/* موضوع */}
                 <View style={{ marginBottom: 16 }}>

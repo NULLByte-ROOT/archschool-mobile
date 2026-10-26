@@ -19,6 +19,7 @@ import { EmptyState, SkeletonRows, SolidCard, StatTile } from "@/components/card
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar, Pill } from "@/components/ui";
+import { UserProfileModal } from "@/components/UserProfileModal";
 import { Corners, Kicker, MonoLabel, Panel } from "@/components/webui";
 import { WeekBars } from "@/components/WeekBars";
 import { faDate, fmtNum, fmtPercent, latinDigits } from "@/lib/format";
@@ -75,9 +76,9 @@ const RANK_STYLES: RankStyle[] = [
 const ROLE_BADGE: Record<Role, { label: string; border: string; bg: string; text: string }> = {
   owner: {
     label: "OWNER",
-    border: "rgba(251,191,36,0.40)",
-    bg: "rgba(251,191,36,0.10)",
-    text: "#FBBF24",
+    border: "rgba(255,255,255,0.28)",
+    bg: "rgba(255,255,255,0.10)",
+    text: "#FFFFFF",
   },
   admin: {
     label: "ADMIN",
@@ -292,11 +293,13 @@ function LeaderboardRow({
   index,
   isMe,
   onOpen,
+  onProfile,
 }: {
   row: LeaderboardEntry;
   index: number;
   isMe: boolean;
   onOpen: () => void;
+  onProfile: () => void;
 }) {
   const style = RANK_STYLES[index];
   const role = (row.user.role ?? "member") as Role;
@@ -344,13 +347,20 @@ function LeaderboardRow({
           )}
         </View>
 
-        <Avatar name={row.user.username} uri={row.user.avatar_url} size="md" ring={isMe} />
+        <Pressable
+          onPress={onProfile}
+          hitSlop={6}
+          accessibilityLabel={`پروفایل ${row.user.username}`}
+        >
+          <Avatar name={row.user.username} uri={row.user.avatar_url} size="md" ring={isMe} />
+        </Pressable>
 
         <View style={{ flex: 1, minWidth: 0 }}>
           <View style={styles.rowTitle}>
             <AppText
               ltr
               numberOfLines={1}
+              onPress={onProfile}
               style={{ fontFamily: fonts.bold, fontSize: 13.5, lineHeight: 20, flexShrink: 1 }}
             >
               {row.user.username}
@@ -459,6 +469,7 @@ export default function LeaderboardScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((state) => state.user);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [profileId, setProfileId] = useState<number | null>(null);
 
   const query = useQuery({
     queryKey: qk.leaderboard,
@@ -495,7 +506,7 @@ export default function LeaderboardScreen() {
           />
         }
       >
-        <Animated.View entering={FadeInDown.duration(320)} style={{ marginBottom: 20 }}>
+        <Animated.View entering={FadeInDown.duration(180)} style={{ marginBottom: 20 }}>
           <Kicker text="leaderboard" dot style={{ marginBottom: 10 }} />
           <View style={styles.headerRow}>
             <View style={{ flexShrink: 1, minWidth: 0 }}>
@@ -526,7 +537,7 @@ export default function LeaderboardScreen() {
         </Animated.View>
 
         {/* summary */}
-        <Animated.View entering={FadeInDown.duration(360).delay(20)} style={styles.summaryGrid}>
+        <Animated.View entering={FadeInDown.duration(180).delay(20)} style={styles.summaryGrid}>
           <SummaryCard
             icon="trophy"
             label="نفر اول"
@@ -554,7 +565,7 @@ export default function LeaderboardScreen() {
         </Animated.View>
 
         {/* ranking rule */}
-        <Animated.View entering={FadeInDown.duration(360).delay(40)} style={styles.rule}>
+        <Animated.View entering={FadeInDown.duration(180).delay(40)} style={styles.rule}>
           <View style={styles.ruleIcon}>
             <Ionicons name="trophy" size={16} color={colors.amber} />
           </View>
@@ -608,13 +619,14 @@ export default function LeaderboardScreen() {
             {entries.map((entry, index) => (
               <Animated.View
                 key={entry.user.id}
-                entering={FadeInDown.duration(280).delay(Math.min(index * 25, 220))}
+                entering={FadeInDown.duration(180).delay(Math.min(index * 25, 220))}
               >
                 <LeaderboardRow
                   row={entry}
                   index={index}
                   isMe={entry.user.id === user?.id}
                   onOpen={() => setSelectedId(entry.user.id)}
+                  onProfile={() => setProfileId(entry.user.id)}
                 />
               </Animated.View>
             ))}
@@ -628,6 +640,8 @@ export default function LeaderboardScreen() {
         entry={selectedEntry}
         loading={stats.isLoading}
       />
+
+      <UserProfileModal userId={profileId} onClose={() => setProfileId(null)} />
     </Screen>
   );
 }

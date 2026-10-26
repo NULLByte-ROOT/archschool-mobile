@@ -31,6 +31,7 @@ import { Header } from "@/components/Header";
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar, Badge, Divider, Pill } from "@/components/ui";
+import { UserProfileModal } from "@/components/UserProfileModal";
 import { dmRoom } from "@/lib/chat";
 import { faDate } from "@/lib/format";
 import { canChat, roleColor, roleLabel } from "@/lib/roles";
@@ -81,6 +82,7 @@ export default function ChatHubScreen() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [profileId, setProfileId] = useState<number | null>(null);
 
   const member = !canChat(user);
 
@@ -175,7 +177,7 @@ export default function ChatHubScreen() {
           />
         }
       >
-        <Animated.View entering={FadeInDown.duration(400)}>
+        <Animated.View entering={FadeInDown.duration(180)}>
           <Pressable onPress={() => openRoom("global")}>
             <GlassCard glow contentStyle={styles.globalCard}>
               <View style={styles.globalIcon}>
@@ -239,14 +241,25 @@ export default function ChatHubScreen() {
                       onPress={() => openRoom(room)}
                       style={styles.dmRow}
                     >
-                      <Avatar
-                        name={peer?.username}
-                        uri={peer?.avatar_url}
-                        size="sm"
-                      />
+                      <Pressable
+                        onPress={() => setProfileId(direct.peer_id)}
+                        hitSlop={6}
+                        accessibilityLabel="پروفایل"
+                      >
+                        <Avatar
+                          name={peer?.username}
+                          uri={peer?.avatar_url}
+                          size="sm"
+                        />
+                      </Pressable>
                       <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                         <View style={styles.rowBetween}>
-                          <AppText variant="label" numberOfLines={1} style={{ fontFamily: fonts.semibold }}>
+                          <AppText
+                            variant="label"
+                            numberOfLines={1}
+                            style={{ fontFamily: fonts.semibold }}
+                            onPress={() => setProfileId(direct.peer_id)}
+                          >
                             {peer?.username ?? "همکلاسی"}
                           </AppText>
                           <AppText variant="caption" color={colors.faint} style={{ fontSize: 10.5 }} ltr>
@@ -304,14 +317,25 @@ export default function ChatHubScreen() {
                     }}
                     style={styles.dmRow}
                   >
-                    <Avatar
-                      name={message.sender_username}
-                      uri={message.sender_avatar_url}
-                      size="sm"
-                    />
+                    <Pressable
+                      onPress={() => setProfileId(message.sender_id)}
+                      hitSlop={6}
+                      accessibilityLabel="پروفایل"
+                    >
+                      <Avatar
+                        name={message.sender_username}
+                        uri={message.sender_avatar_url}
+                        size="sm"
+                      />
+                    </Pressable>
                     <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
                       <View style={styles.rowBetween}>
-                        <AppText variant="label" numberOfLines={1} style={{ flex: 1, fontFamily: fonts.semibold }}>
+                        <AppText
+                          variant="label"
+                          numberOfLines={1}
+                          style={{ flex: 1, fontFamily: fonts.semibold }}
+                          onPress={() => setProfileId(message.sender_id)}
+                        >
                           {message.sender_username ?? "همکلاسی"}
                         </AppText>
                         <AppText variant="caption" color={colors.faint} style={{ fontSize: 10.5 }} ltr>
@@ -375,6 +399,8 @@ export default function ChatHubScreen() {
           ))
         )}
       </Sheet>
+
+      <UserProfileModal userId={profileId} onClose={() => setProfileId(null)} />
     </Screen>
   );
 }

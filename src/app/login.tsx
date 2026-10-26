@@ -1,21 +1,21 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useRef, useState, type ComponentRef } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   View,
 } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 import { ApiError, login, register } from "@/api/client";
-import { Button } from "@/components/Button";
-import { GlassCard } from "@/components/cards";
-import { Field } from "@/components/Field";
 import { Screen } from "@/components/Screen";
 import { AppText } from "@/components/ui";
 import { useAuthStore } from "@/store/auth";
@@ -23,6 +23,18 @@ import { colors, fonts, radius, spacing } from "@/theme/tokens";
 
 type Mode = "login" | "register";
 
+const CODE_LENGTH = 6;
+
+/**
+ * Glassmorphic sign-in plate — the mobile counterpart of the web login card.
+ *
+ * Design rules (task: "ultra-premium, minimal Persian"):
+ *  - true-black canvas + one static white sheen (no animated glow),
+ *  - English labels, at most one short Persian sentence,
+ *  - six glass boxes for the access code, white filled button,
+ *  - a single 240 ms fade-in, nothing bounces,
+ *  - no debug text of any kind.
+ */
 export default function LoginScreen() {
   const router = useRouter();
   const setSession = useAuthStore((state) => state.setSession);
@@ -32,6 +44,9 @@ export default function LoginScreen() {
   const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<"username" | "code" | null>(null);
+
+  const codeRef = useRef<ComponentRef<typeof TextInput> | null>(null);
 
   const isRegister = mode === "register";
 
@@ -44,7 +59,7 @@ export default function LoginScreen() {
       return;
     }
     if (!/^[A-Z0-9]{6}$/.test(code)) {
-      setError("کد دسترسی دقیقاً ۶ کاراکتر انگلیسی یا عدد است. مثال: ROOT01");
+      setError("کد دسترسی باید ۶ کاراکتر انگلیسی یا عدد باشد.");
       return;
     }
 
@@ -54,9 +69,9 @@ export default function LoginScreen() {
         ? await register(username, code)
         : await login(username, code);
       await setSession(session.access_token, session.user);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
-        () => undefined
-      );
+      void Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success
+      ).catch(() => undefined);
       router.replace("/home");
     } catch (err) {
       const message =
@@ -70,134 +85,188 @@ export default function LoginScreen() {
     }
   };
 
+  const changeCode = (value: string) => {
+    setCode(value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, CODE_LENGTH));
+  };
+
   return (
     <Screen edges={["top", "bottom"]} grid>
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={styles.flex}
-      >
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(255,255,255,0.075)", "rgba(255,255,255,0)"]}
+        style={styles.sheen}
+      />
+
+      <KeyboardAvoidingView behavior="padding" style={styles.flex}>
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Animated.View entering={FadeInDown.duration(480)} style={styles.brand}>
-            <View style={styles.mark}>
-              <Image
-                source={require("../../assets/logo.png")}
-                style={{ width: 30, height: 30 }}
-                contentFit="contain"
-                cachePolicy="memory-disk"
-              />
-            </View>
-            <View style={{ gap: 0 }}>
-              <AppText
-                variant="subtitle"
-                ltr
-                style={{ fontFamily: fonts.bold, letterSpacing: 0.4 }}
-              >
-                ArchSchool
-              </AppText>
-              <AppText variant="caption" color={colors.muted}>
-                کارگاه کلاس یازدهم
-              </AppText>
-            </View>
-          </Animated.View>
-
-          <Animated.View entering={FadeInDown.duration(520).delay(70)}>
-            <AppText variant="display" style={styles.headline}>
-              {isRegister ? "به تیم اضافه شو." : "به کارگاه برگرد."}
-            </AppText>
-            <AppText variant="body" color={colors.muted} style={styles.lede}>
-              {isRegister
-                ? "با نام کاربری و کد دسترسی، حساب تازه‌ات را بساز."
-                : "تکالیف، گفتگو و رتبهٔ کلاس، همه در یک صفحه."}
-            </AppText>
-          </Animated.View>
-
-          <Animated.View entering={FadeInDown.duration(560).delay(130)}>
-            <GlassCard glow style={styles.card} contentStyle={styles.cardContent}>
-              <View style={styles.cardHead}>
-                <AppText variant="strong">
-                  {isRegister ? "ساخت حساب" : "ورود به حساب"}
+          <Animated.View entering={FadeIn.duration(180)} style={styles.main}>
+            <View style={styles.brandRow}>
+              <View style={styles.logoPlate}>
+                <Image
+                  source={require("../../assets/logo.png")}
+                  style={styles.logo}
+                  contentFit="contain"
+                  cachePolicy="memory-disk"
+                />
+              </View>
+              <View style={styles.brandText}>
+                <AppText ltr style={styles.wordmark}>
+                  ArchSchool
                 </AppText>
-                <View style={styles.cardLine} />
+                <AppText ltr style={styles.wordmarkSub}>
+                  CLASS WORKSPACE
+                </AppText>
+              </View>
+            </View>
+
+            <View style={styles.headBlock}>
+              <AppText ltr style={styles.eyebrow}>
+                {isRegister ? "NEW ACCOUNT" : "WELCOME BACK"}
+              </AppText>
+              <AppText ltr style={styles.headline}>
+                {isRegister ? "Join the studio." : "Sign in."}
+              </AppText>
+              <AppText style={styles.subline}>
+                {isRegister
+                  ? "با کد دسترسی، حساب تازه بساز."
+                  : "برای ورود، کد دسترسی را وارد کن."}
+              </AppText>
+            </View>
+
+            <View style={styles.card}>
+              <AppText ltr style={styles.label}>
+                USERNAME
+              </AppText>
+              <View
+                style={[
+                  styles.input,
+                  focused === "username" && styles.inputFocused,
+                ]}
+              >
+                <Ionicons
+                  name="person-outline"
+                  size={16}
+                  color={focused === "username" ? colors.text : colors.faint}
+                />
+                <TextInput
+                  value={username}
+                  onChangeText={setUsername}
+                  onFocus={() => setFocused("username")}
+                  onBlur={() => setFocused((current) => (current === "username" ? null : current))}
+                  placeholder="your username"
+                  placeholderTextColor={colors.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={50}
+                  returnKeyType="next"
+                  onSubmitEditing={() => codeRef.current?.focus()}
+                  selectionColor={colors.accent}
+                  style={styles.inputText}
+                />
               </View>
 
-              <Field
-                label="نام کاربری"
-                value={username}
-                onChangeText={setUsername}
-                placeholder="مثلاً sepehr"
-                icon="person-outline"
-                autoCapitalize="none"
-                maxLength={50}
-                returnKeyType="next"
-              />
+              <AppText ltr style={[styles.label, styles.labelSpaced]}>
+                ACCESS CODE
+              </AppText>
 
-              <Field
-                label="کد دسترسی"
-                value={code}
-                onChangeText={(value) =>
-                  setCode(
-                    value
-                      .replace(/[^a-zA-Z0-9]/g, "")
-                      .toUpperCase()
-                      .slice(0, 6)
-                  )
-                }
-                placeholder="ROOT01"
-                hint="۶ کاراکتر، حروف بزرگ انگلیسی و عدد"
-                icon="key-outline"
-                ltr
-                maxLength={6}
-                autoCapitalize="characters"
-                returnKeyType="go"
-                onSubmitEditing={() => void submit()}
-                inputStyle={styles.codeInput}
-              />
+              <Pressable
+                onPress={() => codeRef.current?.focus()}
+                style={styles.codeRow}
+                accessibilityLabel="کد دسترسی"
+              >
+                {Array.from({ length: CODE_LENGTH }).map((_, index) => {
+                  const filled = index < code.length;
+                  const active = focused === "code" && index === code.length;
+                  return (
+                    <View
+                      key={index}
+                      style={[
+                        styles.codeBox,
+                        filled && styles.codeBoxFilled,
+                        active && styles.codeBoxActive,
+                      ]}
+                    >
+                      <AppText ltr style={styles.codeChar}>
+                        {code[index] ?? ""}
+                      </AppText>
+                    </View>
+                  );
+                })}
+                <TextInput
+                  ref={codeRef}
+                  value={code}
+                  onChangeText={changeCode}
+                  onFocus={() => setFocused("code")}
+                  onBlur={() => setFocused((current) => (current === "code" ? null : current))}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  keyboardType="default"
+                  maxLength={CODE_LENGTH}
+                  caretHidden
+                  returnKeyType="go"
+                  onSubmitEditing={() => void submit()}
+                  selectionColor={colors.accent}
+                  style={styles.codeInput}
+                />
+              </Pressable>
+
+              <AppText style={styles.hint}>
+                ۶ کاراکتر — حروف بزرگ انگلیسی و عدد
+              </AppText>
 
               {error ? (
                 <View style={styles.error}>
-                  <Ionicons name="alert-circle" size={15} color={colors.red} />
-                  <AppText variant="caption" color={colors.red} style={{ flex: 1 }}>
+                  <Ionicons name="alert-circle" size={14} color={colors.red} />
+                  <AppText variant="caption" color={colors.red} style={styles.errorText}>
                     {error}
                   </AppText>
                 </View>
               ) : null}
 
-              <Button
-                label={isRegister ? "ساخت حساب و ورود" : "ورود به کارگاه"}
-                icon={isRegister ? "person-add-outline" : "arrow-forward"}
+              <Pressable
                 onPress={() => void submit()}
-                loading={submitting}
-              />
-            </GlassCard>
+                disabled={submitting}
+                style={[styles.button, submitting && styles.buttonBusy]}
+                accessibilityRole="button"
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.onAccent} size="small" />
+                ) : (
+                  <>
+                    <AppText ltr style={styles.buttonText}>
+                      {isRegister ? "CREATE ACCOUNT" : "CONTINUE"}
+                    </AppText>
+                    <Ionicons name="arrow-forward" size={16} color={colors.onAccent} />
+                  </>
+                )}
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  setMode(isRegister ? "login" : "register");
+                  setError(null);
+                }}
+                hitSlop={8}
+                style={styles.switchRow}
+              >
+                <AppText ltr style={styles.switchText}>
+                  {isRegister
+                    ? "ALREADY HAVE A CODE? SIGN IN"
+                    : "NO ACCOUNT? JOIN"}
+                </AppText>
+              </Pressable>
+            </View>
           </Animated.View>
 
-          <Animated.View entering={FadeInDown.duration(560).delay(190)}>
-            <Pressable
-              onPress={() => {
-                setMode(isRegister ? "login" : "register");
-                setError(null);
-              }}
-              style={styles.switch}
-              hitSlop={8}
-            >
-              <AppText variant="caption" color={colors.muted}>
-                {isRegister ? "قبلاً حساب داشتید؟" : "هنوز حساب ندارید؟"}
-              </AppText>
-              <AppText variant="caption" color={colors.amber}>
-                {isRegister ? "ورود" : "ساخت حساب"}
-              </AppText>
-            </Pressable>
-
-            <View style={styles.footerNote}>
-              <Ionicons name="shield-checkmark-outline" size={13} color={colors.faint} />
-              <AppText variant="caption" color={colors.faint} style={{ flex: 1 }}>
-                بدون رمز عبور. اگر کد ندارید، از ادمین کلاس بگیرید.
-              </AppText>
-            </View>
+          <Animated.View entering={FadeIn.duration(180).delay(60)} style={styles.footer}>
+            <View style={styles.footerRule} />
+            <AppText ltr style={styles.devText}>
+              DEVELOPED BY SEPEHR
+            </AppText>
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -207,71 +276,207 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  sheen: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 320,
+  },
   content: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: 22,
     paddingVertical: spacing.xxl,
-    gap: spacing.lg,
   },
-  brand: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  mark: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.md,
+  main: { gap: 26 },
+  brandRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  logoPlate: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#000000",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: colors.lineStrong,
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  headline: { fontSize: 34, lineHeight: 46 },
-  lede: { marginTop: 4, maxWidth: 320 },
-  card: { marginTop: spacing.xs },
-  cardContent: { padding: spacing.lg, gap: spacing.md },
-  cardHead: {
-    flexDirection: "row-reverse",
+  logo: { width: 32, height: 32 },
+  brandText: { gap: 1 },
+  wordmark: {
+    fontFamily: fonts.bold,
+    fontSize: 19,
+    lineHeight: 25,
+    letterSpacing: 0.6,
+    color: colors.text,
+  },
+  wordmarkSub: {
+    fontFamily: fonts.medium,
+    fontSize: 9.5,
+    lineHeight: 14,
+    letterSpacing: 2.6,
+    color: colors.faint,
+  },
+  headBlock: { gap: 6 },
+  eyebrow: {
+    fontFamily: fonts.medium,
+    fontSize: 10.5,
+    lineHeight: 15,
+    letterSpacing: 3.2,
+    color: colors.faint,
+  },
+  headline: {
+    fontFamily: fonts.black,
+    fontSize: 38,
+    lineHeight: 46,
+    letterSpacing: -0.5,
+    color: colors.text,
+  },
+  subline: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 21,
+    color: colors.muted,
+    textAlign: "left",
+  },
+  card: {
+    borderRadius: 26,
+    padding: 20,
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.045)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+  },
+  label: {
+    fontFamily: fonts.medium,
+    fontSize: 9.5,
+    lineHeight: 14,
+    letterSpacing: 2.4,
+    color: colors.faint,
+  },
+  labelSpaced: { marginTop: 12 },
+  input: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm,
+    gap: 9,
+    height: 50,
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
   },
-  cardLine: {
+  inputFocused: {
+    borderColor: "rgba(255,255,255,0.30)",
+    backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  inputText: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.line,
+    color: colors.text,
+    fontFamily: fonts.medium,
+    fontSize: 15,
+    paddingVertical: 0,
+    textAlign: "left",
+    writingDirection: "ltr",
+  },
+  codeRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  codeBox: {
+    flex: 1,
+    height: 56,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+  },
+  codeBoxFilled: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.20)",
+  },
+  codeBoxActive: {
+    borderColor: "rgba(255,255,255,0.55)",
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  codeChar: {
+    fontFamily: fonts.bold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: colors.text,
   },
   codeInput: {
-    textAlign: "center",
-    letterSpacing: 7,
-    fontSize: 18,
-    fontFamily: fonts.bold,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.01,
+    color: "transparent",
+  },
+  hint: {
+    fontFamily: fonts.regular,
+    fontSize: 10.5,
+    lineHeight: 17,
+    color: colors.faint,
+    textAlign: "left",
   },
   error: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(242,104,107,0.35)",
+    borderColor: "rgba(248,113,113,0.32)",
     backgroundColor: colors.redSoft,
   },
-  switch: {
-    flexDirection: "row-reverse",
+  errorText: { flex: 1, textAlign: "left" },
+  button: {
+    marginTop: 10,
+    height: 52,
+    borderRadius: radius.md,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    marginTop: spacing.xs,
+    gap: 8,
+    backgroundColor: "#ffffff",
   },
-  footerNote: {
-    flexDirection: "row-reverse",
+  buttonBusy: { opacity: 0.75 },
+  buttonText: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: 1.8,
+    color: colors.onAccent,
+  },
+  switchRow: { alignSelf: "center", paddingVertical: 6 },
+  switchText: {
+    fontFamily: fonts.medium,
+    fontSize: 9.5,
+    lineHeight: 14,
+    letterSpacing: 1.8,
+    color: colors.muted,
+  },
+  footer: {
+    marginTop: 30,
     alignItems: "center",
-    justifyContent: "center",
-    gap: 5,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.lg,
+    gap: 12,
+  },
+  footerRule: {
+    width: 26,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  devText: {
+    fontFamily: fonts.medium,
+    fontSize: 9,
+    lineHeight: 13,
+    letterSpacing: 3.4,
+    fontVariant: ["tabular-nums"],
+    color: colors.faint,
   },
 });

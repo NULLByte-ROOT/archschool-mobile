@@ -159,8 +159,37 @@ export function dueTone(value: string | null | undefined, now = Date.now()): Due
 
 export function dueColor(tone: DueTone): string {
   if (tone === "red") return colors.red;
-  if (tone === "amber") return colors.amber;
+  // Due-soon keeps the semantic amber (web `--color-warning`); the general
+  // accent is white now, so `colors.amber` can no longer mean "urgent".
+  if (tone === "amber") return colors.warning;
   return colors.muted;
+}
+
+/**
+ * «آنلاین» or «آخرین بازدید: امروز، ساعت 15:30».
+ *
+ * The backend stamps `users.last_seen` on every authenticated request and on
+ * every socket open, so a two-minute window is a truthful "online".
+ */
+export function lastSeenLabel(
+  value: string | null | undefined,
+  now = Date.now()
+): string {
+  const date = parseDue(value);
+  if (!date) return "آخرین بازدید: نامشخص";
+  const diff = now - date.getTime();
+  if (diff < 2 * 60_000) return "آنلاین";
+  if (diff < HOUR_MS) {
+    const minutes = Math.max(1, Math.round(diff / 60_000));
+    return `آخرین بازدید: ${minutes} دقیقه پیش`;
+  }
+  const dayDiff = calendarDayDiff(date, new Date(now));
+  if (dayDiff === 0) return `آخرین بازدید: امروز، ساعت ${faDate(date, "time")}`;
+  if (dayDiff === -1) return `آخرین بازدید: دیروز، ساعت ${faDate(date, "time")}`;
+  if (diff < 7 * DAY_MS) {
+    return `آخرین بازدید: ${Math.floor(diff / DAY_MS)} روز پیش`;
+  }
+  return `آخرین بازدید: ${faDate(date, "full")}، ساعت ${faDate(date, "time")}`;
 }
 
 export function isOverdue(value: string | null | undefined, now = Date.now()): boolean {

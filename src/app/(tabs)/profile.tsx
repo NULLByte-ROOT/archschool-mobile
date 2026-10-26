@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Updates from "expo-updates";
 import { useRouter } from "expo-router";
-import { useState, type ComponentProps } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,15 +20,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ApiError,
   deleteMyAvatar,
+  fetchNotificationPreferences,
   qk,
   updateMe,
+  updateNotificationPreferences,
   uploadFile,
 } from "@/api/client";
-import type { Role } from "@/api/types";
+import type { NotificationPreferences, Role } from "@/api/types";
 import { Screen } from "@/components/Screen";
 import { AppText, Avatar } from "@/components/ui";
 import { Corners, IconTile, Kicker, MonoLabel, Panel, PulseDot } from "@/components/webui";
-import { fmtNum, parseDue } from "@/lib/format";
+import { fmtNum, lastSeenLabel, parseDue } from "@/lib/format";
 import { isOwner, isStaff } from "@/lib/roles";
 import { useAuthStore } from "@/store/auth";
 import {
@@ -76,6 +78,66 @@ function InfoRow({
   );
 }
 
+/** A settings switch with a Persian label and an English mono key. */
+function ToggleRow({
+  icon,
+  label,
+  hint,
+  value,
+  busy,
+  disabled,
+  onToggle,
+}: {
+  icon: ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  hint: string;
+  value: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      disabled={disabled || busy}
+      style={({ pressed }) => [styles.toggleRow, pressed && { opacity: 0.85 }]}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value, disabled: disabled || busy }}
+      accessibilityLabel={label}
+    >
+      <View style={styles.toggleLead}>
+        <View style={styles.toggleIcon}>
+          <Ionicons name={icon} size={15} color={colors.textSoft} />
+        </View>
+        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+          <AppText style={{ fontFamily: fonts.semibold, fontSize: 12.5, lineHeight: 19 }}>
+            {label}
+          </AppText>
+          <AppText color={colors.faint} style={{ fontSize: 10.5, lineHeight: 16 }}>
+            {hint}
+          </AppText>
+        </View>
+      </View>
+      <View
+        style={[
+          styles.switchTrack,
+          { backgroundColor: value ? colors.white : colors.white10 },
+        ]}
+      >
+        <View
+          style={[
+            styles.switchThumb,
+            {
+              backgroundColor: value ? colors.onAccent : colors.textSoft,
+              alignSelf: value ? "flex-end" : "flex-start",
+            },
+          ]}
+        />
+      </View>
+    </Pressable>
+  );
+}
+
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -91,6 +153,45 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /* ---- notification preferences (server-side, per push token) ---- */
+  const prefsQuery = useQuery({
+    queryKey: qk.notificationPrefs,
+    queryFn: fetchNotificationPreferences,
+    staleTime: 60_000,
+    retry: 1,
+  });
+  const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+  const [savingPref, setSavingPref] = useState<keyof NotificationPreferences | null>(null);
+  const [prefsError, setPrefsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prefsQuery.data) setPrefs(prefsQuery.data);
+  }, [prefsQuery.data]);
+
+  const togglePref = async (key: keyof NotificationPreferences) => {
+    if (!prefs || savingPref) return;
+    const previous = prefs;
+    const next = { ...prefs, [key]: !prefs[key] };
+    setPrefsError(null);
+    setPrefs(next);
+    setSavingPref(key);
+    try {
+      const saved = await updateNotificationPreferences(next);
+      setPrefs(saved);
+      queryClient.setQueryData(qk.notificationPrefs, saved);
+      void Haptics.selectionAsync().catch(() => undefined);
+    } catch (toggleError) {
+      setPrefs(previous);
+      setPrefsError(
+        toggleError instanceof ApiError
+          ? toggleError.message
+          : "ذخیرهٔ تنظیمات اعلان انجام نشد."
+      );
+    } finally {
+      setSavingPref(null);
+    }
+  };
 
   const version = Constants.expoConfig?.version ?? "1.0.2";
   const role = (user?.role ?? "member") as Role;
@@ -357,7 +458,71 @@ export default function ProfileScreen() {
             />
             <InfoRow icon="hardware-chip" label="STATUS" value={user?.is_active ? "فعال" : "غیرفعال"} />
             <InfoRow icon="calendar" label="MEMBER SINCE" value={memberSince} />
+            <InfoRow icon="time" label="LAST SEEN" value={lastSeenLabel(user?.last_seen)} />
           </View>
+        </Panel>
+
+        {/* notifications */}
+        <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
+          <View style={styles.prefHead}>
+            <MonoLabel>// NOTIFICATIONS</MonoLabel>
+            {prefsQuery.isLoading || savingPref ? (
+              <ActivityIndicator size="small" color={colors.faint} />
+            ) : (
+              <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 15 }}>
+                {prefsQuery.isError ? "بدون اتصال" : "فعال برای این دستگاه"}
+              </AppText>
+            )}
+          </View>
+          <AppText color={colors.faint} style={{ fontSize: 11.5, lineHeight: 18, marginBottom: 10 }}>
+            اعلان‌ها فقط برای همین دستگاه ذخیره می‌شوند.
+          </AppText>
+
+          {prefs ? (
+            <>
+              <ToggleRow
+                icon="chatbubble-ellipses"
+                label="گفتگوها"
+                hint="پیام کلاس، خصوصی و کامنت تکالیف"
+                value={prefs.chat}
+                busy={savingPref === "chat"}
+                onToggle={() => void togglePref("chat")}
+              />
+              <ToggleRow
+                icon="clipboard"
+                label="تکالیف تازه"
+                hint="وقتی ادمین تکلیف جدید ثبت می‌کند"
+                value={prefs.assignments}
+                busy={savingPref === "assignments"}
+                onToggle={() => void togglePref("assignments")}
+              />
+              <ToggleRow
+                icon="alarm"
+                label="یادآوری مهلت"
+                hint="۲۴ ساعت و ۲ ساعت پیش از پایان مهلت"
+                value={prefs.deadlines}
+                busy={savingPref === "deadlines"}
+                onToggle={() => void togglePref("deadlines")}
+              />
+            </>
+          ) : (
+            <Pressable
+              onPress={() => void prefsQuery.refetch()}
+              style={({ pressed }) => [styles.ghostButton, pressed && { opacity: 0.8 }]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="refresh" size={13} color={colors.textSoft} />
+              <AppText color={colors.textSoft} style={{ fontFamily: fonts.semibold, fontSize: 11 }}>
+                دریافت تنظیمات اعلان
+              </AppText>
+            </Pressable>
+          )}
+
+          {prefsError ? (
+            <AppText color={colors.danger} style={{ fontSize: 10.5, lineHeight: 16, marginTop: 8 }}>
+              {prefsError}
+            </AppText>
+          ) : null}
         </Panel>
 
         {/* session */}
@@ -494,6 +659,50 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.20)",
     backgroundColor: colors.black,
   },
+  prefHead: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  toggleRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.white08,
+  },
+  toggleLead: {
+    flex: 1,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  toggleIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.white12,
+    backgroundColor: colors.white04,
+  },
+  switchTrack: {
+    width: 42,
+    height: 24,
+    borderRadius: 12,
+    padding: 3,
+    justifyContent: "center",
+  },
+  switchThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+  },
   avatarFabDanger: {
     borderColor: "rgba(248,113,113,0.40)",
   },
@@ -581,8 +790,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.25)",
-    backgroundColor: "rgba(251,191,36,0.07)",
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     paddingHorizontal: 10,
     paddingVertical: 8,
   },

@@ -9,7 +9,15 @@ export type RoomSocketEvent =
   | { type: "clear"; room: string }
   | { type: "delete"; id: number }
   | { type: "edit"; message: Message }
-  | { type: "pin"; message: Message };
+  | { type: "pin"; message: Message }
+  | {
+      type: "read";
+      room: string;
+      readerId: number;
+      readerUsername: string | null;
+      readAt: string;
+      messageIds: number[];
+    };
 
 interface RoomHandlers {
   onMessage: (message: Message) => void;
@@ -115,6 +123,24 @@ export function useRoomSocket(room: string | null, handlers: RoomHandlers) {
             type: "pin",
             message: frame.data as Message,
           });
+        } else if (frame.type === "read" && frame.data) {
+          const data = frame.data as {
+            room?: string;
+            reader_id?: number;
+            reader_username?: string | null;
+            read_at?: string;
+            message_ids?: number[];
+          };
+          if (typeof data.reader_id === "number" && Array.isArray(data.message_ids)) {
+            handlersRef.current.onEvent?.({
+              type: "read",
+              room: typeof data.room === "string" ? data.room : room,
+              readerId: data.reader_id,
+              readerUsername: data.reader_username ?? null,
+              readAt: data.read_at ?? new Date().toISOString(),
+              messageIds: data.message_ids,
+            });
+          }
         }
       };
 

@@ -69,7 +69,7 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 
 const ROLE_BADGE: Record<Role, { border: string; text: string }> = {
-  owner: { border: "rgba(251,191,36,0.45)", text: colors.amber },
+  owner: { border: "rgba(255,255,255,0.28)", text: colors.white },
   admin: { border: "rgba(255,255,255,0.40)", text: colors.white },
   friend: { border: "rgba(125,211,252,0.35)", text: colors.blue },
   member: { border: colors.white12, text: colors.faint },
@@ -354,7 +354,7 @@ export default function UsersScreen() {
         }
       >
         {/* header */}
-        <Animated.View entering={FadeInDown.duration(320)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180)} style={{ marginBottom: 16 }}>
           <Kicker text="admin" dot style={{ marginBottom: 10 }} />
 
           <View style={styles.headerRow}>
@@ -406,7 +406,7 @@ export default function UsersScreen() {
 
         {/* new user panel */}
         {createOpen ? (
-          <Animated.View entering={FadeInDown.duration(220)} style={{ marginBottom: 16 }}>
+          <Animated.View entering={FadeInDown.duration(180)} style={{ marginBottom: 16 }}>
             <Panel corners contentStyle={styles.panelPad}>
               <MonoLabel style={{ marginBottom: 10 }}>// NEW USER</MonoLabel>
 
@@ -591,7 +591,7 @@ export default function UsersScreen() {
               return (
                 <Animated.View
                   key={person.id}
-                  entering={FadeInDown.duration(240).delay(Math.min(index * 25, 200))}
+                  entering={FadeInDown.duration(180).delay(Math.min(index * 25, 200))}
                   style={[
                     styles.userRow,
                     index > 0 && styles.userRowDivider,

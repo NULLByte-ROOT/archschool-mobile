@@ -53,7 +53,7 @@ export function Sheet({
           style={styles.keyboard}
         >
           <Animated.View
-            entering={SlideInDown.springify().damping(22).stiffness(180)}
+            entering={SlideInDown.duration(180)}
             style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}
           >
             <View style={styles.grabber} />

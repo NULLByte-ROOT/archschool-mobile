@@ -28,7 +28,7 @@ export function ProgressBar({
     const safe = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
     const timer = setTimeout(() => {
       progress.value = withTiming(safe, {
-        duration: 780,
+        duration: 180,
         easing: Easing.out(Easing.cubic),
       });
     }, Math.max(0, delay));

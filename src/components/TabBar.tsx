@@ -243,9 +243,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 30,
     borderRadius: radius.pill,
-    backgroundColor: "rgba(251,191,36,0.14)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.30)",
+    borderColor: "rgba(255,255,255,0.30)",
   },
   badge: { position: "absolute", top: -3, right: 2 },
 });

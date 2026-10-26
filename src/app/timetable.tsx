@@ -42,7 +42,7 @@ const TONE_COLOR = {
 
 const TONE_BORDER = {
   red: "rgba(248,113,113,0.35)",
-  amber: "rgba(251,191,36,0.30)",
+  amber: "rgba(255,255,255,0.30)",
   none: colors.white10,
 } as const;
 
@@ -437,7 +437,7 @@ export default function TimetableScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* header */}
-        <Animated.View entering={FadeInDown.duration(320)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180)} style={{ marginBottom: 16 }}>
           <Kicker text="timetable" dot style={{ marginBottom: 10 }} />
 
           <View style={styles.headerRow}>
@@ -478,12 +478,12 @@ export default function TimetableScreen() {
         </Animated.View>
 
         {/* current period */}
-        <Animated.View entering={FadeInDown.duration(320).delay(20)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180).delay(20)} style={{ marginBottom: 16 }}>
           <SchoolStatusCard />
         </Animated.View>
 
         {/* weekly timetable */}
-        <Animated.View entering={FadeInDown.duration(360).delay(40)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180).delay(40)} style={{ marginBottom: 16 }}>
           <Panel corners contentStyle={styles.panelPad}>
             <PanelHeader
               label="// CLASS TIMETABLE · YAZDAHOM NETWORK 1"
@@ -529,7 +529,7 @@ export default function TimetableScreen() {
         </Animated.View>
 
         {/* bells */}
-        <Animated.View entering={FadeInDown.duration(360).delay(60)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180).delay(60)} style={{ marginBottom: 16 }}>
           <Panel corners contentStyle={styles.panelPad}>
             <PanelHeader
               label="// BELLS"
@@ -631,7 +631,7 @@ export default function TimetableScreen() {
         </Animated.View>
 
         {/* next day */}
-        <Animated.View entering={FadeInDown.duration(360).delay(80)}>
+        <Animated.View entering={FadeInDown.duration(180).delay(80)}>
           <NextDayPanel bySubject={bySubject} now={now} />
 
           <AppText
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
   },
   rowActive: {
     borderColor: colors.amberLine,
-    backgroundColor: "rgba(251,191,36,0.07)",
+    backgroundColor: "rgba(255,255,255,0.06)",
   },
   badgeSquare: {
     width: 34,

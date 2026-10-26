@@ -500,8 +500,8 @@ function TopThree({
         title="صدر جدول"
         icon="trophy"
         iconTone={colors.amber}
-        iconBorder="rgba(251,191,36,0.25)"
-        iconBackground="rgba(251,191,36,0.10)"
+        iconBorder="rgba(255,255,255,0.18)"
+        iconBackground="rgba(255,255,255,0.08)"
         accessory={<Ionicons name="arrow-up-outline" size={16} color={colors.faint} style={{ transform: [{ rotate: "45deg" }] }} />}
       />
 
@@ -751,7 +751,7 @@ function PulseBox({
         {current ? (
           <Animated.View
             key={current.key}
-            entering={FadeIn.duration(420)}
+            entering={FadeIn.duration(180)}
             style={st.tickerRow}
           >
             {current.kind === "global" ? (
@@ -1163,11 +1163,11 @@ export default function DashboardScreen() {
           />
         }
       >
-        <Animated.View entering={FadeInDown.duration(380)}>
+        <Animated.View entering={FadeInDown.duration(180)}>
           <WelcomeCard username={user?.username ?? "همکلاسی"} now={now} />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(380).delay(30)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180).delay(30)} style={{ marginBottom: 16 }}>
           <SchoolStatusStrip />
         </Animated.View>
 
@@ -1183,7 +1183,7 @@ export default function DashboardScreen() {
         ) : null}
 
         {me ? (
-          <Animated.View entering={FadeInDown.duration(420).delay(20)} style={{ marginBottom: 16 }}>
+          <Animated.View entering={FadeInDown.duration(180).delay(20)} style={{ marginBottom: 16 }}>
             <StreakHero
               streak={me.current_streak}
               best={me.best_streak}
@@ -1205,7 +1205,7 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        <Animated.View entering={FadeInDown.duration(420).delay(50)} style={{ marginBottom: 16 }}>
+        <Animated.View entering={FadeInDown.duration(180).delay(50)} style={{ marginBottom: 16 }}>
           <AssignmentsCta
             pending={pending.length}
             urgent={urgent.length}
@@ -1240,7 +1240,7 @@ export default function DashboardScreen() {
         </View>
 
         {!member ? (
-          <Animated.View entering={FadeInDown.duration(420).delay(90)} style={{ marginBottom: 20 }}>
+          <Animated.View entering={FadeInDown.duration(180).delay(90)} style={{ marginBottom: 20 }}>
             <PulseBox
               items={pulseItems}
               unread={unread}
@@ -1482,7 +1482,7 @@ const st = StyleSheet.create({
   miniFill: {
     height: "100%",
     borderRadius: 2,
-    backgroundColor: "rgba(251,191,36,0.80)",
+    backgroundColor: "rgba(255,255,255,0.85)",
   },
 
   /* focus */

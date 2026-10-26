@@ -4,8 +4,9 @@ import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useRef, useState, type ComponentRef } from "react";
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Linking,
@@ -20,15 +21,19 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  addAttachment,
   ApiError,
   deleteAssignment,
+  deleteAttachment,
   deleteMessage,
   fetchAssignment,
   fetchAssignmentTeam,
   fetchAttachments,
   fetchMessages,
+  markMessageRead,
   markRoomRead,
   qk,
+  readRoomBatch,
   resolveMediaUrl,
   sendMessage,
   toggleAssignment,
@@ -47,7 +52,8 @@ import { Header } from "@/components/Header";
 import { ProgressBar } from "@/components/ProgressBar";
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
-import { AppText, Avatar, Divider, Pill } from "@/components/ui";
+import { AppText, Avatar, Pill } from "@/components/ui";
+import { UserProfileModal } from "@/components/UserProfileModal";
 import { useRoomSocket, type RoomSocketEvent } from "@/hooks/useRoomSocket";
 import { useNow } from "@/hooks/useNow";
 import {
@@ -60,7 +66,7 @@ import {
   relativeDue,
 } from "@/lib/format";
 import { isStaff } from "@/lib/roles";
-import { categoryItemLabel } from "@/lib/subjects";
+import { categoryItemLabel, subjectName, SUBJECT_BY_ID } from "@/lib/subjects";
 import { useAuthStore } from "@/store/auth";
 import { colors, fonts, radius, screenGutter, spacing } from "@/theme/tokens";
 
@@ -74,31 +80,89 @@ function mergeMessages(current: Message[], incoming: Message[]): Message[] {
   });
 }
 
-function TeamRow({ member }: { member: TeamMember }) {
+/** Web `InfoChip`: icon + tiny label over a bold value (2-per-row grid). */
+function InfoChip({
+  icon,
+  label,
+  value,
+  sub,
+  tone = colors.text,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: string;
+}) {
   return (
-    <View style={styles.teamRow}>
-      <Avatar name={member.user.username} uri={member.user.avatar_url} size="xs" />
-      <AppText variant="caption" style={{ flex: 1 }} numberOfLines={1}>
-        {member.user.username}
-        {member.is_self ? " (تو)" : ""}
-      </AppText>
-      <View
-        style={[
-          styles.teamStatus,
-          {
-            backgroundColor: member.completed ? colors.tealSoft : "rgba(255,255,255,0.04)",
-            borderColor: member.completed
-              ? "rgba(79,209,181,0.35)"
-              : colors.line,
-          },
-        ]}
-      >
-        <Ionicons
-          name={member.completed ? "checkmark" : "close"}
-          size={12}
-          color={member.completed ? colors.teal : colors.faint}
-        />
+    <View style={styles.infoChip}>
+      <View style={styles.infoChipHead}>
+        <Ionicons name={icon} size={13} color={colors.faint} />
+        <AppText color={colors.faint} style={styles.infoChipLabel}>
+          {label}
+        </AppText>
       </View>
+      <AppText color={tone} style={styles.infoChipValue} numberOfLines={1}>
+        {value}
+      </AppText>
+      {sub ? (
+        <AppText color={colors.faint} style={styles.infoChipSub} numberOfLines={1}>
+          {sub}
+        </AppText>
+      ) : null}
+    </View>
+  );
+}
+
+/** Web `وضعیت تیم`: a wrap of avatars with a green check / grey cross badge. */
+function TeamGrid({
+  team,
+  onProfile,
+}: {
+  team: TeamMember[];
+  onProfile: (userId: number) => void;
+}) {
+  return (
+    <View style={styles.teamGrid}>
+      {team.map((member) => (
+        <Pressable
+          key={member.user.id}
+          onPress={() => onProfile(member.user.id)}
+          style={styles.teamCell}
+          accessibilityLabel={`${member.user.username} — ${
+            member.completed ? "انجام شده" : "انجام نشده"
+          }`}
+        >
+          <View style={styles.teamAvatarWrap}>
+            <Avatar name={member.user.username} uri={member.user.avatar_url} size="md" />
+            <View
+              style={[
+                styles.teamBadge,
+                {
+                  backgroundColor: member.completed ? colors.success : colors.panelDeep,
+                  borderColor: colors.black,
+                },
+              ]}
+            >
+              <Ionicons
+                name={member.completed ? "checkmark" : "close"}
+                size={11}
+                color={member.completed ? colors.black : colors.faint}
+              />
+            </View>
+            {member.is_self ? <View style={styles.teamSelfDot} /> : null}
+          </View>
+          <AppText
+            ltr
+            align="center"
+            color={colors.textSoft}
+            style={styles.teamName}
+            numberOfLines={1}
+          >
+            {member.user.username}
+          </AppText>
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -106,9 +170,11 @@ function TeamRow({ member }: { member: TeamMember }) {
 function AttachmentTile({
   attachment,
   onImage,
+  onDelete,
 }: {
   attachment: Attachment;
   onImage: (url: string) => void;
+  onDelete?: () => void;
 }) {
   const isImage = /\.(png|jpe?g|webp|gif|heic|heif)(\?|$)/i.test(attachment.file_url);
   const url = resolveMediaUrl(attachment.file_url);
@@ -123,6 +189,16 @@ function AttachmentTile({
           transition={140}
           cachePolicy="memory-disk"
         />
+        {onDelete ? (
+          <Pressable
+            onPress={onDelete}
+            hitSlop={8}
+            style={styles.attachmentDelete}
+            accessibilityLabel="حذف پیوست"
+          >
+            <Ionicons name="trash-outline" size={13} color={colors.white} />
+          </Pressable>
+        ) : null}
       </Pressable>
     );
   }
@@ -147,7 +223,13 @@ function AttachmentTile({
           {attachment.user_username ?? "پیوست"}
         </AppText>
       </View>
-      <Ionicons name="download-outline" size={16} color={colors.muted} />
+      {onDelete ? (
+        <Pressable onPress={onDelete} hitSlop={8} accessibilityLabel="حذف پیوست">
+          <Ionicons name="trash-outline" size={15} color={colors.red} />
+        </Pressable>
+      ) : (
+        <Ionicons name="download-outline" size={16} color={colors.muted} />
+      )}
     </Pressable>
   );
 }
@@ -172,6 +254,9 @@ export default function AssignmentDetailScreen() {
   const [commentInput, setCommentInput] = useState("");
   const [commentImage, setCommentImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [sendingComment, setSendingComment] = useState(false);
+  const [profileId, setProfileId] = useState<number | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [deletingAttachment, setDeletingAttachment] = useState<number | null>(null);
 
   const assignmentQuery = useQuery({
     queryKey: qk.assignment(id),
@@ -229,17 +314,60 @@ export default function AssignmentDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, comments.length]);
 
+  // One receipt per unseen comment, so the sender's tick turns double live.
+  useEffect(() => {
+    if (!validId) return;
+    const timer = setTimeout(() => {
+      readRoomBatch(`assignment:${id}`)
+        .then(() => queryClient.invalidateQueries({ queryKey: qk.unread }))
+        .catch(() => undefined);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [id, queryClient, validId]);
+
   const onSocketEvent = (event: RoomSocketEvent) => {
     if (event.type === "delete") {
       setComments((current) => current.filter((message) => message.id !== event.id));
     } else if (event.type === "clear") {
       setComments([]);
+    } else if (event.type === "edit") {
+      setComments((current) =>
+        current.map((message) =>
+          message.id === event.message.id ? event.message : message
+        )
+      );
+    } else if (event.type === "read") {
+      if (event.readerId === user?.id) return;
+      const ids = new Set(event.messageIds);
+      const receipt = { username: event.readerUsername, read_at: event.readAt };
+      setComments((current) =>
+        current.map((message) => {
+          if (!ids.has(message.id)) return message;
+          const existing = message.seen_by ?? [];
+          if (
+            existing.some(
+              (entry) =>
+                entry.username === receipt.username &&
+                entry.read_at === receipt.read_at
+            )
+          ) {
+            return message;
+          }
+          return { ...message, seen_by: [...existing, receipt] };
+        })
+      );
     }
   };
 
   const { connected } = useRoomSocket(room, {
-    onMessage: (message) =>
-      setComments((current) => mergeMessages(current, [message])),
+    onMessage: (message) => {
+      setComments((current) => mergeMessages(current, [message]));
+      if (message.sender_id !== user?.id) {
+        void markMessageRead(message.id)
+          .then(() => markRoomRead(`assignment:${id}`))
+          .catch(() => undefined);
+      }
+    },
     onEvent: onSocketEvent,
   });
 
@@ -306,6 +434,62 @@ export default function AssignmentDetailScreen() {
     } catch {
       Alert.alert("تصویر", "انتخاب تصویر ممکن نشد.");
     }
+  };
+
+  const uploadAttachmentFile = async () => {
+    if (uploadingAttachment) return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      setUploadingAttachment(true);
+      await addAttachment(id, {
+        uri: asset.uri,
+        name: asset.fileName ?? `attachment-${Date.now()}.jpg`,
+        type: asset.mimeType ?? "image/jpeg",
+        size: asset.fileSize,
+      });
+      await queryClient.invalidateQueries({ queryKey: qk.attachments(id) });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined
+      );
+    } catch (error) {
+      Alert.alert(
+        "پیوست",
+        error instanceof ApiError ? error.message : "آپلود فایل انجام نشد."
+      );
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const removeAttachmentFile = (attachment: Attachment) => {
+    Alert.alert("حذف پیوست", "این فایل برای همه حذف می‌شود؟", [
+      { text: "انصراف", style: "cancel" },
+      {
+        text: "حذف",
+        style: "destructive",
+        onPress: () => {
+          void (async () => {
+            setDeletingAttachment(attachment.id);
+            try {
+              await deleteAttachment(attachment.id);
+              await queryClient.invalidateQueries({ queryKey: qk.attachments(id) });
+            } catch (error) {
+              Alert.alert(
+                "خطا",
+                error instanceof ApiError ? error.message : "حذف پیوست انجام نشد."
+              );
+            } finally {
+              setDeletingAttachment(null);
+            }
+          })();
+        },
+      },
+    ]);
   };
 
   const sendComment = async () => {
@@ -434,7 +618,7 @@ export default function AssignmentDetailScreen() {
             />
           ) : (
             <>
-              <Animated.View entering={FadeInDown.duration(400)}>
+              <Animated.View entering={FadeInDown.duration(180)}>
                 <GlassCard glow={dueToneValue === "red" && !isDone} contentStyle={styles.hero}>
                   <View style={styles.heroTop}>
                     <View
@@ -473,7 +657,44 @@ export default function AssignmentDetailScreen() {
                     <AppText variant="body" color={colors.textSoft} style={styles.description}>
                       {assignment.description}
                     </AppText>
-                  ) : null}
+                  ) : (
+                    <AppText variant="caption" color={colors.faint}>
+                      توضیحی برای این تکلیف ثبت نشده.
+                    </AppText>
+                  )}
+
+                  <View style={styles.infoGrid}>
+                    <InfoChip
+                      icon="book-outline"
+                      label="درس"
+                      value={subjectName(assignment.subject_id, assignment.course) || "—"}
+                      sub={SUBJECT_BY_ID[assignment.subject_id]?.teacher}
+                    />
+                    <InfoChip
+                      icon="calendar-outline"
+                      label="مهلت"
+                      value={formatDue(assignment.due_date)}
+                      sub={relativeDue(assignment.due_date, now)}
+                      tone={dueColor(dueToneValue)}
+                    />
+                    <InfoChip
+                      icon="person-outline"
+                      label="سازنده"
+                      value={assignment.creator_username || "نامشخص"}
+                    />
+                    <InfoChip
+                      icon="time-outline"
+                      label="وضعیت من"
+                      value={
+                        isDone
+                          ? assignment.category === "exam"
+                            ? "خوندم"
+                            : "انجام دادم"
+                          : "در انتظار انجام"
+                      }
+                      tone={isDone ? colors.success : colors.text}
+                    />
+                  </View>
 
                   <View style={styles.dueBox}>
                     <View style={styles.dueRow}>
@@ -536,42 +757,114 @@ export default function AssignmentDetailScreen() {
 
               <View style={styles.section}>
                 <SectionTitle
-                  title="وضعیت تیم"
-                  hint={`${fmtNum(team.length)} عضو`}
+                  title="انجام داده‌اند"
+                  hint={`${fmtNum(assignment.completed_by_users.length)} نفر`}
                 />
-                <SolidCard style={{ paddingHorizontal: spacing.md }}>
+                <SolidCard style={{ padding: spacing.md, gap: spacing.sm }}>
+                  {assignment.completed_by_users.length === 0 ? (
+                    <AppText variant="caption" color={colors.faint}>
+                      هنوز کسی این تکلیف را انجام نداده.
+                    </AppText>
+                  ) : (
+                    <View style={styles.completerWrap}>
+                      {assignment.completed_by_users.map((completer) => (
+                        <Pressable
+                          key={completer.id}
+                          onPress={() => setProfileId(completer.id)}
+                          style={styles.completer}
+                          accessibilityLabel={`پروفایل ${completer.username ?? ""}`}
+                        >
+                          <Avatar name={completer.username} size="xs" />
+                          <AppText ltr style={styles.completerName} numberOfLines={1}>
+                            {completer.username ?? "کاربر"}
+                          </AppText>
+                          {completer.id === user?.id ? (
+                            <View style={styles.selfTag}>
+                              <AppText style={styles.selfTagText}>تو</AppText>
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </SolidCard>
+              </View>
+
+              <View style={styles.section}>
+                <SectionTitle
+                  title="وضعیت تیم"
+                  hint={`${fmtNum(completedCount)} / ${fmtNum(team.length)}`}
+                />
+                <SolidCard style={{ padding: spacing.md }}>
                   {teamQuery.isLoading ? (
                     <SkeletonRows count={2} height={44} />
                   ) : team.length === 0 ? (
                     <EmptyState compact icon="people-outline" title="عضوی برای نمایش نیست" />
                   ) : (
-                    team.map((member, index) => (
-                      <View key={member.user.id}>
-                        {index > 0 ? <Divider /> : null}
-                        <TeamRow member={member} />
-                      </View>
-                    ))
+                    <TeamGrid team={team} onProfile={setProfileId} />
                   )}
                 </SolidCard>
               </View>
 
-              {(attachmentsQuery.data ?? []).length > 0 ? (
-                <View style={styles.section}>
-                  <SectionTitle
-                    title="پیوست‌ها"
-                    hint={`${fmtNum((attachmentsQuery.data ?? []).length)} فایل`}
-                  />
-                  <View style={styles.attachments}>
-                    {(attachmentsQuery.data ?? []).map((attachment) => (
-                      <AttachmentTile
-                        key={attachment.id}
-                        attachment={attachment}
-                        onImage={setViewerUrl}
-                      />
-                    ))}
-                  </View>
-                </View>
-              ) : null}
+              <View style={styles.section}>
+                <SectionTitle
+                  title="پیوست‌ها"
+                  hint={`${fmtNum((attachmentsQuery.data ?? []).length)} فایل`}
+                />
+                <SolidCard style={{ padding: spacing.md, gap: spacing.sm }}>
+                  <Pressable
+                    onPress={() => void uploadAttachmentFile()}
+                    disabled={uploadingAttachment}
+                    style={({ pressed }) => [
+                      styles.uploadTile,
+                      pressed && styles.uploadTilePressed,
+                    ]}
+                    accessibilityLabel="افزودن پیوست"
+                  >
+                    <View style={styles.uploadIcon}>
+                      {uploadingAttachment ? (
+                        <ActivityIndicator color={colors.text} />
+                      ) : (
+                        <Ionicons name="cloud-upload-outline" size={18} color={colors.text} />
+                      )}
+                    </View>
+                    <AppText color={colors.text} style={styles.uploadTitle}>
+                      {uploadingAttachment ? "در حال آپلود…" : "افزودن تصویر"}
+                    </AppText>
+                    <AppText color={colors.faint} style={styles.uploadHint}>
+                      حداکثر ۲۵ مگابایت
+                    </AppText>
+                  </Pressable>
+
+                  {attachmentsQuery.isLoading ? (
+                    <SkeletonRows count={1} height={54} />
+                  ) : (attachmentsQuery.data ?? []).length === 0 ? (
+                    <AppText variant="caption" color={colors.faint} align="center">
+                      هنوز فایلی پیوست نشده.
+                    </AppText>
+                  ) : (
+                    <View style={styles.attachments}>
+                      {(attachmentsQuery.data ?? []).map((attachment) => (
+                        <AttachmentTile
+                          key={attachment.id}
+                          attachment={attachment}
+                          onImage={setViewerUrl}
+                          onDelete={
+                            attachment.user_id === user?.id || staff
+                              ? () => removeAttachmentFile(attachment)
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </View>
+                  )}
+                  {deletingAttachment !== null ? (
+                    <AppText variant="caption" color={colors.faint} align="center">
+                      در حال حذف پیوست…
+                    </AppText>
+                  ) : null}
+                </SolidCard>
+              </View>
 
               <View style={styles.section}>
                 <SectionTitle
@@ -607,22 +900,44 @@ export default function AssignmentDetailScreen() {
                           ]}
                         >
                           <View style={styles.commentHead}>
-                            <Avatar
-                              name={message.sender_username}
-                              uri={message.sender_avatar_url}
-                              size="xs"
-                            />
+                            <Pressable
+                              onPress={() => setProfileId(message.sender_id)}
+                              hitSlop={6}
+                              accessibilityLabel="پروفایل"
+                            >
+                              <Avatar
+                                name={message.sender_username}
+                                uri={message.sender_avatar_url}
+                                size="xs"
+                              />
+                            </Pressable>
                             <AppText
                               variant="caption"
-                              color={own ? colors.amber : colors.textSoft}
+                              color={colors.textSoft}
                               style={{ flex: 1, fontFamily: fonts.medium }}
                               numberOfLines={1}
+                              onPress={() => setProfileId(message.sender_id)}
                             >
                               {message.sender_username ?? "همکلاسی"}
                             </AppText>
                             <AppText variant="caption" color={colors.faint} ltr style={{ fontSize: 10 }}>
                               {faDate(message.created_at, "time")}
                             </AppText>
+                            {own ? (
+                              <Ionicons
+                                name={
+                                  (message.seen_by?.length ?? 0) > 0
+                                    ? "checkmark-done"
+                                    : "checkmark"
+                                }
+                                size={12}
+                                color={
+                                  (message.seen_by?.length ?? 0) > 0
+                                    ? colors.accent
+                                    : colors.faint
+                                }
+                              />
+                            ) : null}
                           </View>
                           {image ? (
                             <Pressable onPress={() => setViewerUrl(image)}>
@@ -695,7 +1010,7 @@ export default function AssignmentDetailScreen() {
                       <Ionicons
                         name="send"
                         size={17}
-                        color={canSend ? "#171004" : colors.faint}
+                        color={canSend ? colors.onAccent : colors.faint}
                       />
                     </Pressable>
                   </View>
@@ -765,6 +1080,8 @@ export default function AssignmentDetailScreen() {
           ) : null}
         </View>
       </Modal>
+
+      <UserProfileModal userId={profileId} onClose={() => setProfileId(null)} />
     </Screen>
   );
 }
@@ -823,19 +1140,137 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   section: { paddingTop: spacing.xl },
-  teamRow: {
+  infoGrid: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  infoChip: {
+    width: "48.5%",
+    gap: 2,
+    padding: 10,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.lineChip,
+    backgroundColor: "rgba(255,255,255,0.02)",
+  },
+  infoChipHead: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 8,
+    gap: 5,
   },
-  teamStatus: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+  infoChipLabel: { fontSize: 9.5, lineHeight: 14, letterSpacing: 0.3 },
+  infoChipValue: {
+    fontFamily: fonts.bold,
+    fontSize: 12.5,
+    lineHeight: 19,
+  },
+  infoChipSub: { fontSize: 9.5, lineHeight: 14 },
+  completerWrap: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  completer: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 5,
+    paddingRight: 9,
+    paddingLeft: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white03,
+  },
+  completerName: { fontFamily: fonts.medium, fontSize: 11, lineHeight: 16 },
+  selfTag: {
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.white18,
+    backgroundColor: colors.white10,
+  },
+  selfTagText: {
+    fontFamily: fonts.semibold,
+    fontSize: 8,
+    lineHeight: 12,
+    color: colors.text,
+  },
+  teamGrid: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    columnGap: 12,
+    rowGap: 14,
+  },
+  teamCell: {
+    width: 58,
+    alignItems: "center",
+    gap: 6,
+  },
+  teamAvatarWrap: { position: "relative" },
+  teamBadge: {
+    position: "absolute",
+    bottom: -4,
+    left: -4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  teamSelfDot: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.white,
+  },
+  teamName: { width: "100%", fontSize: 10, lineHeight: 15 },
+  uploadTile: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: colors.white12,
+    backgroundColor: "rgba(255,255,255,0.02)",
+  },
+  uploadTilePressed: {
+    borderColor: colors.white18,
+    backgroundColor: colors.white06,
+  },
+  uploadIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
+    borderColor: colors.white12,
+    backgroundColor: colors.white05,
+  },
+  uploadTitle: { fontFamily: fonts.semibold, fontSize: 12, lineHeight: 18 },
+  uploadHint: { fontSize: 10, lineHeight: 15 },
+  attachmentDelete: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.62)",
+    borderWidth: 1,
+    borderColor: colors.white12,
   },
   attachments: {
     flexDirection: "row-reverse",
@@ -881,8 +1316,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.022)",
   },
   commentOwn: {
-    borderColor: "rgba(242,180,85,0.26)",
-    backgroundColor: "rgba(242,180,85,0.06)",
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
   commentHead: {
     flexDirection: "row-reverse",

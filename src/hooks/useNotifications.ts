@@ -35,7 +35,7 @@ async function ensureAndroidChannels(): Promise<void> {
   const base = {
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 160, 90, 160],
-    lightColor: "#F2B455",
+    lightColor: "#FFFFFF",
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
   };
   const channels: { id: string; name: string; description: string }[] = [
@@ -56,18 +56,30 @@ async function ensureAndroidChannels(): Promise<void> {
   );
 }
 
+async function requestPermissionAsync(): Promise<boolean> {
+  try {
+    let permissions = await Notifications.getPermissionsAsync();
+    if (permissions.status !== "granted") {
+      // First login on this install: Android 13+ shows the POST_NOTIFICATIONS
+      // dialog here, iOS shows its own alert. Both are one-shot per install.
+      permissions = await Notifications.requestPermissionsAsync({
+        ios: { allowAlert: true, allowBadge: true, allowSound: true },
+      });
+    }
+    return permissions.status === "granted";
+  } catch {
+    return false;
+  }
+}
+
 async function registerForPushAsync(): Promise<string | null> {
+  if (!(await requestPermissionAsync())) return null;
   if (!Device.isDevice) {
     // Emulators cannot receive remote push; Expo Go on Android cannot either.
     return null;
   }
   try {
     await ensureAndroidChannels();
-    let permissions = await Notifications.getPermissionsAsync();
-    if (permissions.status !== "granted") {
-      permissions = await Notifications.requestPermissionsAsync();
-    }
-    if (permissions.status !== "granted") return null;
 
     const id = projectId();
     if (!id) {
@@ -95,7 +107,7 @@ export function usePushRegistration(): void {
     if (!sessionToken) return;
     let cancelled = false;
 
-    const run = async () => {
+    const push = async () => {
       const expoToken = await registerForPushAsync();
       if (!expoToken || cancelled) return;
       try {
@@ -106,9 +118,18 @@ export function usePushRegistration(): void {
       }
     };
 
-    void run();
+    // Let the login response (and the profile query) settle first, so the
+    // permission dialog never covers a loading screen.
+    const timer = setTimeout(() => void push(), 900);
+    // FCM/APNs can roll a device token; re-register so the backend stays fresh.
+    const tokenSub = Notifications.addPushTokenListener(() => {
+      void push();
+    });
+
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      tokenSub.remove();
     };
   }, [sessionToken]);
 }
