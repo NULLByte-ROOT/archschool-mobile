@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentProps, type Compone
 import {
   Alert,
   Animated,
+  AppState,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -30,6 +31,7 @@ import {
   fetchAssignment,
   fetchMessages,
   fetchTeam,
+  fetchUserProfile,
   markMessageRead,
   markRoomRead,
   pinMessage,
@@ -42,7 +44,7 @@ import {
 } from "@/api/client";
 import type { Message, PublicUser } from "@/api/types";
 import { EmptyState } from "@/components/cards";
-import { Header } from "@/components/Header";
+import { GlassSurface, StatusDot } from "@/components/chatkit";
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar, Divider } from "@/components/ui";
@@ -52,6 +54,8 @@ import { dmRoom, parseRoom } from "@/lib/chat";
 import {
   calendarDayDiff,
   faDate,
+  fmtNum,
+  lastSeenLabel,
   parseDue,
 } from "@/lib/format";
 import { canChat, isStaff } from "@/lib/roles";
@@ -59,7 +63,7 @@ import { useAuthStore } from "@/store/auth";
 import { colors, fonts, radius, spacing } from "@/theme/tokens";
 
 const LOCKED = "برای دسترسی به گفتگو، از ادمین اجازه بگیرید.";
-const SEND_FADE_MS = 150;
+const SEND_FADE_MS = 100;
 
 /** A long-press menu anchored to the touch point (Telegram's inline menu). */
 interface MenuAnchor {
@@ -248,10 +252,15 @@ function MessageBubble({
               hitSlop={6}
               accessibilityLabel="پروفایل فرستنده"
             >
-              <Avatar name={message.sender_username} uri={message.sender_avatar_url} size="xs" />
+              <Avatar
+                name={message.sender_username}
+                uri={message.sender_avatar_url}
+                size="xs"
+                style={{ width: 32, height: 32, borderRadius: 16 }}
+              />
             </Pressable>
           ) : (
-            <View style={{ width: 28 }} />
+            <View style={{ width: 38 }} />
           )
         ) : null}
 
@@ -340,8 +349,10 @@ function MessageBubble({
                 >
                   <Ionicons
                     name={seenCount > 0 ? "checkmark-done" : "checkmark"}
-                    size={13}
-                    color={seenCount > 0 ? colors.accent : colors.faint}
+                    size={12}
+                    color={
+                      seenCount > 0 ? colors.white : "rgba(255,255,255,0.42)"
+                    }
                   />
                 </Pressable>
               ) : null}
@@ -350,6 +361,120 @@ function MessageBubble({
         </SwipeReply>
       </View>
     </View>
+  );
+}
+
+/**
+ * Glass room header.
+ *
+ * RTL order (right → left): back, avatar, name + status, menu. The status line
+ * is the only truthful presence signal we have for a DM — `lastSeenLabel` reads
+ * the backend's two-minute `last_seen` window, refreshed by the 60s profile poll
+ * — so the green dot is never a decorative lie.
+ */
+function RoomHeader({
+  kind,
+  title,
+  peerName,
+  peerAvatar,
+  peerLastSeen,
+  connected,
+  memberCount,
+  onBack,
+  onMenu,
+}: {
+  kind: "global" | "dm" | "assignment";
+  title: string;
+  peerName?: string | null;
+  peerAvatar?: string | null;
+  peerLastSeen?: string | null;
+  connected: boolean;
+  memberCount: number;
+  onBack: () => void;
+  onMenu?: () => void;
+}) {
+  const seen = kind === "dm" ? lastSeenLabel(peerLastSeen) : "";
+  const online = kind === "dm" ? seen === "آنلاین" : connected;
+
+  const status =
+    kind === "dm"
+      ? seen
+      : kind === "assignment"
+        ? connected
+          ? "اتاق کامنت تکلیف · متصل"
+          : "اتاق کامنت تکلیف · در حال اتصال…"
+        : connected
+          ? `${fmtNum(memberCount)} عضو · متصل`
+          : `${fmtNum(memberCount)} عضو · در حال اتصال…`;
+
+  return (
+    <GlassSurface
+      style={styles.roomHeaderGlass}
+      contentStyle={styles.roomHeader}
+      intensity={30}
+    >
+      <Pressable
+        onPress={onBack}
+        hitSlop={10}
+        style={styles.headBtn}
+        accessibilityRole="button"
+        accessibilityLabel="بازگشت"
+      >
+        <Ionicons name="chevron-forward" size={21} color={colors.white} />
+      </Pressable>
+
+      <View style={styles.headAvatar}>
+        {kind === "dm" ? (
+          <Avatar
+            name={peerName}
+            uri={peerAvatar}
+            size="sm"
+            style={{ width: 40, height: 40, borderRadius: 20 }}
+          />
+        ) : (
+          <View style={styles.headGlyph}>
+            <Ionicons
+              name={kind === "assignment" ? "document-text-outline" : "people"}
+              size={18}
+              color={colors.white}
+            />
+          </View>
+        )}
+      </View>
+
+      <View style={styles.headText}>
+        <AppText numberOfLines={1} style={styles.headTitle}>
+          {title}
+        </AppText>
+        <View style={styles.headStatusRow}>
+          <StatusDot
+            tone={online ? colors.success : "rgba(255,255,255,0.28)"}
+            size={6}
+          />
+          <AppText
+            numberOfLines={1}
+            color={online ? "rgba(255,255,255,0.62)" : colors.faint}
+            style={styles.headStatus}
+          >
+            {status}
+          </AppText>
+        </View>
+      </View>
+
+      {onMenu ? (
+        <Pressable
+          onPress={onMenu}
+          hitSlop={10}
+          style={styles.headBtn}
+          accessibilityRole="button"
+          accessibilityLabel="مدیریت گفتگو"
+        >
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.white} />
+        </Pressable>
+      ) : (
+        <View style={styles.headBtn} />
+      )}
+    </GlassSurface>
   );
 }
 
@@ -388,6 +513,9 @@ export default function ChatRoomScreen() {
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const window = useWindowDimensions();
   const pendingSends = useRef(new Set<number>());
+  /** Latest messages, readable from the AppState listener without re-binding. */
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
 
   const messagesQuery = useQuery({
     queryKey: qk.messages(room),
@@ -407,6 +535,21 @@ export default function ChatRoomScreen() {
     queryKey: qk.assignment(assignmentId ?? 0),
     queryFn: () => fetchAssignment(assignmentId ?? 0),
     enabled: Boolean(assignmentId) && !blocked,
+  });
+
+  /**
+   * DM presence. `/users/team` only carries public fields, so a truthful
+   * "آنلاین" comes from the profile endpoint, which exposes `last_seen` (the
+   * backend stamps it on every authenticated request and socket open). The
+   * existing two-minute window in `lastSeenLabel` is the same rule the web
+   * client uses.
+   */
+  const peerProfile = useQuery({
+    queryKey: qk.user(peerId ?? 0),
+    queryFn: () => fetchUserProfile(peerId ?? 0),
+    enabled: parsed.kind === "dm" && peerId !== undefined && !blocked,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 
   useEffect(() => {
@@ -450,6 +593,24 @@ export default function ChatRoomScreen() {
         .catch(() => undefined);
     }, 400);
     return () => clearTimeout(timer);
+  }, [blocked, queryClient, room]);
+
+  /**
+   * Coming back from the background does not remount the screen, so the batch
+   * read above never re-runs — a DM left open while the phone was locked would
+   * keep the other side on a single tick. Re-read on every foreground, capped at
+   * the newest message already on screen so nothing newer is marked unseen-ly.
+   */
+  useEffect(() => {
+    if (!room || blocked) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      const latest = messagesRef.current[messagesRef.current.length - 1]?.id;
+      readRoomBatch(room, latest && latest > 0 ? latest : undefined)
+        .then(() => queryClient.invalidateQueries({ queryKey: qk.unread }))
+        .catch(() => undefined);
+    });
+    return () => subscription.remove();
   }, [blocked, queryClient, room]);
 
   const onSocketEvent = (event: RoomSocketEvent) => {
@@ -521,15 +682,27 @@ export default function ChatRoomScreen() {
         ? peer?.username ?? "گفتگوی خصوصی"
         : "گفتگوی کلاس";
 
-  const subtitle =
-    parsed.kind === "assignment"
-      ? "اتاق کامنت تکلیف"
-      : parsed.kind === "dm"
-        ? "خصوصی"
-        : "گروه کلاس";
-
   const canDelete = isStaff(user);
   const pinned = messages.find((message) => message.is_pinned);
+
+  const memberCount = team.data?.length ?? 0;
+  const infoSeen = infoMessage?.seen_by ?? [];
+  /**
+   * "Message info" copy. A DM has exactly one possible reader, so naming them
+   * beats «1 نفر دیده‌اند» — the brief asks for the recipient's name and the
+   * exact time the message was read.
+   */
+  const infoSubtitle =
+    parsed.kind === "dm"
+      ? infoSeen.length
+        ? `${infoSeen[0].username ?? peer?.username ?? "مخاطب"} · ${faDate(
+            infoSeen[0].read_at,
+            "weekdayTime"
+          )}`
+        : `${peer?.username ?? "مخاطب"} هنوز ندیده`
+      : infoSeen.length
+        ? `${fmtNum(infoSeen.length)} نفر دیده‌اند`
+        : "هنوز کسی ندیده";
 
   const pickImage = async () => {
     if (sending) return;
@@ -796,7 +969,7 @@ export default function ChatRoomScreen() {
 
   /* ---- inline long-press menu (Telegram's small anchored card) ---- */
   const MENU_WIDTH = 190;
-  const MENU_ROW = 42;
+  const MENU_ROW = 44;
   const anchorMessage = menuAnchor?.message ?? null;
   const menuActions: {
     key: string;
@@ -899,7 +1072,13 @@ export default function ChatRoomScreen() {
   if (blocked) {
     return (
       <Screen edges={["top", "bottom"]}>
-        <Header title="گفتگو" onBack={() => router.back()} />
+        <RoomHeader
+          kind={parsed.kind}
+          title="گفتگو"
+          connected={false}
+          memberCount={0}
+          onBack={() => router.back()}
+        />
         <View style={styles.center}>
           <EmptyState
             icon="lock-closed-outline"
@@ -915,39 +1094,42 @@ export default function ChatRoomScreen() {
 
   return (
     <Screen edges={["top"]}>
-      <Header
+      <RoomHeader
+        kind={parsed.kind}
         title={title}
-        subtitle={`${subtitle} · ${connected ? "متصل" : "در حال اتصال…"}`}
+        peerName={peer?.username}
+        peerAvatar={peer?.avatar_url}
+        peerLastSeen={peerProfile.data?.last_seen}
+        connected={connected}
+        memberCount={memberCount}
         onBack={() => router.back()}
-        actions={
-          canDelete ? (
-            <Pressable
-              onPress={() => setMenuOpen(true)}
-              style={styles.headerAction}
-              hitSlop={8}
-              accessibilityLabel="مدیریت گفتگو"
-            >
-              <Ionicons name="ellipsis-horizontal" size={19} color={colors.text} />
-            </Pressable>
-          ) : null
-        }
+        onMenu={canDelete ? () => setMenuOpen(true) : undefined}
       />
 
       {pinned ? (
-        <View style={styles.pinnedBar}>
-          <Ionicons name="pin" size={13} color={colors.amber} />
+        <GlassSurface style={styles.pinnedBar} contentStyle={styles.pinnedInner}>
+          <View style={styles.pinnedIcon}>
+            <Ionicons name="pin" size={11} color={colors.amber} />
+          </View>
           <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-            <AppText variant="caption" color={colors.amber} style={{ fontFamily: fonts.medium }}>
+            <AppText
+              color={colors.amber}
+              style={{ fontFamily: fonts.medium, fontSize: 9.5, lineHeight: 14 }}
+            >
               پیام پین‌شده
             </AppText>
-            <AppText variant="caption" color={colors.muted} numberOfLines={1}>
+            <AppText
+              color="rgba(255,255,255,0.66)"
+              numberOfLines={1}
+              style={{ fontSize: 11.5, lineHeight: 17, textAlign: "right" }}
+            >
               {pinned.content.trim() || "📷 تصویر"}
             </AppText>
           </View>
-          <AppText variant="caption" color={colors.faint}>
+          <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 15 }}>
             {pinned.sender_username ?? ""}
           </AppText>
-        </View>
+        </GlassSurface>
       ) : null}
 
       <KeyboardAvoidingView
@@ -1035,51 +1217,55 @@ export default function ChatRoomScreen() {
 
         <View
           style={[
-            styles.composer,
+            styles.composerDock,
             { paddingBottom: Math.max(insets.bottom, 10) },
           ]}
         >
-          <Pressable
-            onPress={() => void pickImage()}
-            style={styles.attach}
-            hitSlop={6}
-            accessibilityLabel="پیوست تصویر"
-          >
-            <Ionicons name="image-outline" size={21} color={colors.amber} />
-          </Pressable>
+          <GlassSurface style={styles.composerGlass} contentStyle={styles.composer}>
+            <Pressable
+              onPress={() => void pickImage()}
+              style={styles.attach}
+              hitSlop={6}
+              accessibilityLabel="پیوست تصویر"
+            >
+              <Ionicons name="image-outline" size={20} color={colors.white} />
+            </Pressable>
 
-          <View style={styles.inputWrap}>
-            <TextInput
-              ref={inputRef}
-              value={input}
-              onChangeText={setInput}
-              placeholder="پیام…"
-              placeholderTextColor={colors.faint}
-              multiline
-              maxLength={4000}
-              selectionColor={colors.amber}
-              style={styles.input}
-              textAlignVertical="center"
-            />
-          </View>
+            <View style={styles.inputWrap}>
+              <TextInput
+                ref={inputRef}
+                value={input}
+                onChangeText={setInput}
+                placeholder="پیام…"
+                placeholderTextColor={colors.faint}
+                multiline
+                maxLength={4000}
+                selectionColor={colors.white}
+                style={styles.input}
+                textAlignVertical="center"
+              />
+            </View>
 
-          <Pressable
-            onPress={() => void send()}
-            disabled={!canSend}
-            style={[
-              styles.send,
-              {
-                backgroundColor: canSend ? colors.amber : "rgba(255,255,255,0.06)",
-              },
-            ]}
-            accessibilityLabel="ارسال"
-          >
-            <Ionicons
-              name="send"
-              size={18}
-              color={canSend ? colors.onAccent : colors.faint}
-            />
-          </Pressable>
+            <Pressable
+              onPress={() => void send()}
+              disabled={!canSend}
+              style={[
+                styles.send,
+                {
+                  backgroundColor: canSend
+                    ? colors.white
+                    : "rgba(255,255,255,0.06)",
+                },
+              ]}
+              accessibilityLabel="ارسال"
+            >
+              <Ionicons
+                name="arrow-up"
+                size={19}
+                color={canSend ? colors.black : "rgba(255,255,255,0.32)"}
+              />
+            </Pressable>
+          </GlassSurface>
         </View>
       </KeyboardAvoidingView>
 
@@ -1133,30 +1319,36 @@ export default function ChatRoomScreen() {
               { width: MENU_WIDTH, top: menuTop, left: menuLeft },
             ]}
           >
-            {menuActions.map((action, index) => (
-              <Pressable
-                key={action.key}
-                onPress={action.run}
-                style={({ pressed }) => [
-                  styles.contextRow,
-                  { height: MENU_ROW },
-                  index > 0 && styles.contextRowBorder,
-                  pressed && styles.contextRowPressed,
-                ]}
-              >
-                <Ionicons
-                  name={action.icon}
-                  size={16}
-                  color={action.tone ?? colors.textSoft}
-                />
-                <AppText
-                  color={action.tone ?? colors.text}
-                  style={styles.contextLabel}
+            <GlassSurface
+              intensity={48}
+              style={{ borderRadius: 18 }}
+              contentStyle={styles.contextGlass}
+            >
+              {menuActions.map((action, index) => (
+                <Pressable
+                  key={action.key}
+                  onPress={action.run}
+                  style={({ pressed }) => [
+                    styles.contextRow,
+                    { height: MENU_ROW },
+                    index > 0 && styles.contextRowBorder,
+                    pressed && styles.contextRowPressed,
+                  ]}
                 >
-                  {action.label}
-                </AppText>
-              </Pressable>
-            ))}
+                  <Ionicons
+                    name={action.icon}
+                    size={16}
+                    color={action.tone ?? "rgba(255,255,255,0.78)"}
+                  />
+                  <AppText
+                    color={action.tone ?? colors.white}
+                    style={styles.contextLabel}
+                  >
+                    {action.label}
+                  </AppText>
+                </Pressable>
+              ))}
+            </GlassSurface>
           </Animated2.View>
         </Pressable>
       </Modal>
@@ -1166,11 +1358,7 @@ export default function ChatRoomScreen() {
         visible={infoMessage !== null}
         onClose={() => setInfoMessage(null)}
         title="مشاهده پیام"
-        subtitle={
-          infoMessage?.seen_by?.length
-            ? `${infoMessage.seen_by.length} نفر دیده‌اند`
-            : "هنوز کسی ندیده"
-        }
+        subtitle={infoSubtitle}
       >
         {infoMessage?.content.trim() ? (
           <View style={styles.actionPreview}>
@@ -1184,7 +1372,9 @@ export default function ChatRoomScreen() {
           <View style={styles.infoEmpty}>
             <Ionicons name="checkmark" size={16} color={colors.faint} />
             <AppText variant="caption" color={colors.faint} style={{ flex: 1 }}>
-              پیام ارسال شده اما هنوز کسی آن را باز نکرده است.
+              {parsed.kind === "dm"
+                ? `«${peer?.username ?? "مخاطب"}» هنوز این پیام را باز نکرده است.`
+                : "پیام ارسال شده اما هنوز کسی آن را باز نکرده است."}
             </AppText>
           </View>
         ) : (
@@ -1346,28 +1536,83 @@ export default function ChatRoomScreen() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
-  headerAction: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  /* ---- glass room header ---- */
+  roomHeaderGlass: {
+    borderRadius: 0,
+    borderWidth: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(6,6,9,0.78)",
+  },
+  roomHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minHeight: 58,
+  },
+  headBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  headAvatar: { width: 40, height: 40 },
+  headGlyph: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  headText: { flex: 1, minWidth: 0, gap: 1 },
+  headTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 15,
+    lineHeight: 22,
+    color: colors.white,
+    textAlign: "right",
+  },
+  headStatusRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 5,
+  },
+  headStatus: {
+    flexShrink: 1,
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: "right",
   },
   pinnedBar: {
+    marginHorizontal: spacing.sm,
+    marginTop: 6,
+    marginBottom: 2,
+    borderRadius: 14,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+  },
+  pinnedInner: {
     flexDirection: "row-reverse",
     alignItems: "center",
     gap: spacing.xs,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  pinnedIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: colors.amberLine,
-    backgroundColor: colors.amberSoft,
+    borderColor: "rgba(255,255,255,0.10)",
   },
   listContent: {
     paddingHorizontal: spacing.sm,
@@ -1382,13 +1627,15 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
     borderColor: colors.line,
-    marginVertical: 6,
+    marginVertical: 8,
   },
   messageRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 6,
-    marginVertical: 1.5,
+    // Avatars sit on the bubble's baseline, like Telegram — not floating at the
+    // top of a tall bubble.
+    alignItems: "flex-end",
+    gap: 7,
+    marginVertical: 2,
   },
   // Telegram RTL layout: my messages hug the right edge, everyone else's the
   // left — with the avatar sitting at the far left, immediately beside the
@@ -1411,30 +1658,33 @@ const styles = StyleSheet.create({
   swipeHintLeft: { left: 2 },
   swipeHintRight: { right: 2 },
   bubble: {
-    paddingHorizontal: spacing.sm,
-    paddingTop: 7,
-    paddingBottom: 5,
-    borderRadius: radius.md,
+    paddingHorizontal: 11,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderRadius: 16,
     borderWidth: 1,
     gap: 4,
     overflow: "hidden",
   },
   ownBubble: {
-    backgroundColor: "#2b5278",
-    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "#2a3a4d",
+    borderColor: "rgba(255,255,255,0.10)",
     borderBottomRightRadius: 6,
   },
   otherBubble: {
-    backgroundColor: "#182533",
-    borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "#15171c",
+    borderColor: "rgba(255,255,255,0.07)",
     borderBottomLeftRadius: 6,
   },
   messageText: { fontSize: 14.5, lineHeight: 23 },
   messageMeta: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    alignSelf: "flex-end",
+    // Bottom-left of the bubble: the bubble is a column, so `flex-start` is the
+    // left edge while the row itself still reads right-to-left.
+    alignSelf: "flex-start",
     gap: 4,
+    marginTop: 1,
   },
   tickButton: {
     flexDirection: "row-reverse",
@@ -1448,12 +1698,15 @@ const styles = StyleSheet.create({
   },
   contextMenu: {
     position: "absolute",
+    borderRadius: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 16,
+  },
+  contextGlass: {
     paddingVertical: 6,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.white12,
-    backgroundColor: "rgba(20,20,24,0.98)",
-    overflow: "hidden",
   },
   contextRow: {
     flexDirection: "row-reverse",
@@ -1511,15 +1764,22 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(14,14,17,0.94)",
   },
   pendingThumb: { width: 38, height: 38, borderRadius: radius.xs },
+  composerDock: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+  },
+  composerGlass: {
+    borderRadius: 24,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(10,10,13,0.72)",
+  },
   composer: {
     flexDirection: "row-reverse",
     alignItems: "flex-end",
     gap: 6,
-    paddingHorizontal: spacing.sm,
-    paddingTop: spacing.xs,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.line,
-    backgroundColor: "rgba(0,0,0,0.92)",
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    minHeight: 54,
   },
   attach: {
     width: 42,
@@ -1527,17 +1787,14 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.amberSoft,
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: colors.amberLine,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   inputWrap: {
     flex: 1,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    paddingHorizontal: spacing.sm,
+    borderRadius: 18,
+    paddingHorizontal: 8,
     minHeight: 42,
     justifyContent: "center",
   },
@@ -1553,9 +1810,9 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
   send: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },

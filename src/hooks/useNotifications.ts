@@ -3,8 +3,8 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
-import { useEffect } from "react";
-import { Platform } from "react-native";
+import { useEffect, useRef } from "react";
+import { AppState, Platform } from "react-native";
 
 import { qk, registerPushToken } from "@/api/client";
 import { rememberPushToken } from "@/store/auth";
@@ -14,7 +14,7 @@ Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowBanner: true,
     shouldShowList: true,
-    shouldPlaySound: false,
+    shouldPlaySound: true,
     shouldSetBadge: true,
   }),
 });
@@ -36,6 +36,7 @@ async function ensureAndroidChannels(): Promise<void> {
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 160, 90, 160],
     lightColor: "#FFFFFF",
+    sound: "default",
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
   };
   const channels: { id: string; name: string; description: string }[] = [
@@ -73,14 +74,24 @@ async function requestPermissionAsync(): Promise<boolean> {
 }
 
 async function registerForPushAsync(): Promise<string | null> {
-  if (!(await requestPermissionAsync())) return null;
-  if (!Device.isDevice) {
-    // Emulators cannot receive remote push; Expo Go on Android cannot either.
+  // Channels first. Android 13 ties the permission prompt to a channel, and —
+  // more importantly — a push addressed to a channel that does not exist is
+  // dropped without any error. Creating them before the permission gate means a
+  // later grant (or a headless wake-up) still has valid channels.
+  await ensureAndroidChannels();
+
+  if (!(await requestPermissionAsync())) {
+    console.info("[push] notification permission not granted");
     return null;
   }
-  try {
-    await ensureAndroidChannels();
 
+  if (!Device.isDevice) {
+    // Emulators cannot receive remote push; Expo Go on Android cannot either.
+    console.info("[push] emulator detected — remote push unavailable");
+    return null;
+  }
+
+  try {
     const id = projectId();
     if (!id) {
       // Before `eas init` there is no project id; skip quietly instead of
@@ -92,16 +103,44 @@ async function registerForPushAsync(): Promise<string | null> {
     }
 
     const token = await Notifications.getExpoPushTokenAsync({ projectId: id });
+    console.info(`[push] Expo push token: ${token.data}`);
     return token.data;
   } catch (error) {
-    console.info("[push] registration skipped", error);
+    // The usual cause on Android is a build without Firebase credentials:
+    // `getExpoPushTokenAsync` throws before any network call happens.
+    console.warn("[push] getExpoPushTokenAsync failed", error);
     return null;
   }
+}
+
+/**
+ * Store the token on the backend, retrying with a short backoff.
+ *
+ * The first attempt often races the login/profile bootstrap or a flaky network;
+ * a silent single failure used to mean the account had no token until the next
+ * cold start.
+ */
+async function syncTokenWithBackend(expoToken: string): Promise<boolean> {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await registerPushToken(expoToken, Platform.OS);
+      rememberPushToken(expoToken);
+      console.info("[push] token stored on the backend");
+      return true;
+    } catch (error) {
+      console.info(`[push] backend registration failed (attempt ${attempt})`, error);
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 2500));
+      }
+    }
+  }
+  return false;
 }
 
 /** Register this install once per authenticated session. */
 export function usePushRegistration(): void {
   const sessionToken = useAuthStore((state) => state.token);
+  const lastSync = useRef(0);
 
   useEffect(() => {
     if (!sessionToken) return;
@@ -110,12 +149,8 @@ export function usePushRegistration(): void {
     const push = async () => {
       const expoToken = await registerForPushAsync();
       if (!expoToken || cancelled) return;
-      try {
-        await registerPushToken(expoToken, Platform.OS);
-        rememberPushToken(expoToken);
-      } catch (error) {
-        console.info("[push] backend registration failed", error);
-      }
+      lastSync.current = Date.now();
+      await syncTokenWithBackend(expoToken);
     };
 
     // Let the login response (and the profile query) settle first, so the
@@ -125,11 +160,20 @@ export function usePushRegistration(): void {
     const tokenSub = Notifications.addPushTokenListener(() => {
       void push();
     });
+    // Tokens are also lost across app updates, reboots and data restores. A
+    // foreground re-sync (at most every 10 minutes) heals a missing row without
+    // ever bothering the user again — permissions are already granted by then.
+    const appStateSub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      if (Date.now() - lastSync.current < 10 * 60_000) return;
+      void push();
+    });
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
       tokenSub.remove();
+      appStateSub.remove();
     };
   }, [sessionToken]);
 }
