@@ -169,3 +169,38 @@ never bare `docker compose up`.
 - `ScrollView` ref type is `ComponentRef<typeof ScrollView>`.
 - PowerShell blocks `npm.ps1`; use `cmd /c "npm …"` / `cmd /c "npx …"` on this
   Windows workstation.
+
+## 10. Visual parity with the web app
+
+The native shell mirrors the web app at phone width (`https://archschool.vidxsepehr.ir`):
+100% of the flow/order, the exact web colours. `src/theme/tokens.ts` is the only
+source of colour/geometry — never hardcode a hex in a screen.
+
+- **Floating glass tab bar** (`components/TabBar.tsx`): `expo-blur` pill, 24–26px
+  icons, small labels, amber active capsule, haptics. It is absolutely
+  positioned, so every scrolling tab screen must add
+  `paddingBottom: tabBarReserve + insets.bottom + 28`. Chat screens are the one
+  intentional exception (native Telegram layout, untouched).
+- **Web primitives**: `components/webui.tsx` (`Panel`, `Corners`, `Kicker`,
+  `MonoLabel`, `PulseDot`, `IconTile`, `PanelHeader`, `MiniStat`, `mono`),
+  `components/charts.tsx` (SVG `AreaChart` / `Donut` / `SegmentedBar` instead of
+  Recharts), `components/SelectSheet.tsx` (stand-in for the web dropdown) and
+  `components/SchoolStatusStrip.tsx`.
+- **Screen map**: `(tabs)/home` ← Dashboard, `(tabs)/assignments` ←
+  AssignmentsPage, `(tabs)/leaderboard` ← LeaderboardPage ("لیدر بورد"),
+  `(tabs)/profile` ← SettingsPage, `timetable.tsx` ← TimetablePage,
+  `users.tsx` ← UsersPage, `new-assignment.tsx` ← AddAssignmentModal (also the
+  edit form via `?id=`).
+- **Due dates**: `lib/due.ts` mirrors the web `lib/assignments.ts` maths
+  (`WEEK_DAYS`, `SUBJECT_DAY`, `dateAt`, `weekOffsetOf`, `defaultDueForSubject`).
+  Weeks are Saturday-based and land at 23:59, exactly like the web.
+- **Permissions stay backend-first**: assignment create/edit/delete is
+  admin/owner only, "Change Code" is Owner-only, members can still toggle
+  completion and comment inside assignment rooms.
+
+Verification without a local dev server:
+
+```
+node node_modules\typescript\bin\tsc --noEmit
+node node_modules\expo\bin\cli export --platform android --output-dir .expo-export-test
+```

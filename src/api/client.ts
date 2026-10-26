@@ -171,6 +171,11 @@ export function updateMe(data: { bio?: string; avatar_url?: string | null }): Pr
   });
 }
 
+/** Mirrors the web `deleteMyAvatar()`; also removes the uploaded file server-side. */
+export function deleteMyAvatar(): Promise<User> {
+  return request<User>("/users/me/avatar", { method: "DELETE" });
+}
+
 // ---------------------------------------------------------------------------
 // Push tokens
 // ---------------------------------------------------------------------------
@@ -240,6 +245,13 @@ export interface AssignmentInput {
 export function createAssignment(data: AssignmentInput): Promise<Assignment> {
   return request<Assignment>("/assignments/", {
     method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateAssignment(id: number, data: AssignmentInput): Promise<Assignment> {
+  return request<Assignment>(`/assignments/${id}`, {
+    method: "PATCH",
     body: JSON.stringify(data),
   });
 }

@@ -1,122 +1,112 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import * as Updates from "expo-updates";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
+  TextInput,
   View,
 } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ApiError,
-  fetchUserStats,
+  deleteMyAvatar,
   qk,
   updateMe,
   uploadFile,
 } from "@/api/client";
 import type { Role } from "@/api/types";
-import { Button } from "@/components/Button";
-import { GlassCard, SectionTitle, SolidCard, StatTile } from "@/components/cards";
-import { Field } from "@/components/Field";
 import { Screen } from "@/components/Screen";
-import { Sheet } from "@/components/Sheet";
-import { WeekBars } from "@/components/WeekBars";
-import { AppText, Avatar, Divider, Pill, type IconName } from "@/components/ui";
-import { faDate, fmtNum, fmtPercent } from "@/lib/format";
-import { isOwner, isStaff, roleColor, roleLabel } from "@/lib/roles";
+import { AppText, Avatar } from "@/components/ui";
+import { Corners, IconTile, Kicker, MonoLabel, Panel, PulseDot } from "@/components/webui";
+import { fmtNum, parseDue } from "@/lib/format";
+import { isOwner, isStaff } from "@/lib/roles";
 import { useAuthStore } from "@/store/auth";
-import { colors, fonts, radius, screenGutter, spacing } from "@/theme/tokens";
+import {
+  colors,
+  fonts,
+  radius,
+  screenGutter,
+  spacing,
+  tabBarReserve,
+} from "@/theme/tokens";
 
-function ActionRow({
+function roleText(role: Role, isAdmin: boolean): string {
+  if (role === "owner") return "مالک (Owner)";
+  if (role === "admin" || isAdmin) return "ادمین";
+  if (role === "friend") return "دوست (Friend)";
+  return "عضو";
+}
+
+function InfoRow({
   icon,
   label,
-  hint,
-  tone = colors.text,
-  onPress,
-  last = false,
+  value,
+  mono = false,
 }: {
-  icon: IconName;
+  icon: ComponentProps<typeof Ionicons>["name"];
   label: string;
-  hint?: string;
-  tone?: string;
-  onPress: () => void;
-  last?: boolean;
+  value: string;
+  mono?: boolean;
 }) {
   return (
-    <>
-      <Pressable onPress={onPress} style={styles.actionRow}>
-        <View
-          style={[
-            styles.actionIcon,
-            {
-              borderColor:
-                tone === colors.red ? "rgba(242,104,107,0.3)" : colors.line,
-              backgroundColor:
-                tone === colors.red ? colors.redSoft : "rgba(255,255,255,0.03)",
-            },
-          ]}
-        >
-          <Ionicons name={icon} size={17} color={tone} />
-        </View>
-        <View style={{ flex: 1, gap: 1 }}>
-          <AppText variant="label" color={tone} style={{ fontFamily: fonts.semibold }}>
-            {label}
-          </AppText>
-          {hint ? (
-            <AppText variant="caption" color={colors.faint}>
-              {hint}
-            </AppText>
-          ) : null}
-        </View>
-        <Ionicons name="chevron-back" size={14} color={colors.faint} />
-      </Pressable>
-      {!last ? <Divider /> : null}
-    </>
+    <View style={styles.infoRow}>
+      <View style={styles.infoRight}>
+        <Ionicons name={icon} size={15} color={colors.faint} />
+        <MonoLabel>{label}</MonoLabel>
+      </View>
+      <AppText
+        numberOfLines={1}
+        ltr={mono}
+        color={colors.text}
+        style={{ fontSize: 14, lineHeight: 21, flexShrink: 1, textAlign: "left" }}
+      >
+        {value}
+      </AppText>
+    </View>
   );
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const logout = useAuthStore((state) => state.logout);
 
-  const [editOpen, setEditOpen] = useState(false);
   const [bio, setBio] = useState(user?.bio ?? "");
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url ?? "");
-  const [saving, setSaving] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
+  const [savingBio, setSavingBio] = useState(false);
+  const [bioSaved, setBioSaved] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const stats = useQuery({
-    queryKey: qk.userStats(user?.id ?? 0),
-    queryFn: () => fetchUserStats(user?.id ?? 0),
-    enabled: Boolean(user?.id),
-  });
+  const version = Constants.expoConfig?.version ?? "1.0.2";
+  const role = (user?.role ?? "member") as Role;
+  const staff = isStaff(user);
+  const owner = isOwner(user);
 
-  const version = Constants.expoConfig?.version ?? "1.0.0";
-  const entry = stats.data;
-
-  const openEdit = () => {
-    setBio(user?.bio ?? "");
-    setAvatarUrl(user?.avatar_url ?? "");
-    setEditError(null);
-    setEditOpen(true);
+  const syncUser = async (next: Awaited<ReturnType<typeof updateMe>>) => {
+    await setUser(next);
+    void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+    void queryClient.invalidateQueries({ queryKey: qk.userStats(next.id) });
+    setBio(next.bio ?? "");
   };
 
   const pickAvatar = async () => {
-    if (uploadingAvatar) return;
-    setEditError(null);
+    if (uploading || deleting) return;
+    setError(null);
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ["images"],
@@ -126,41 +116,59 @@ export default function ProfileScreen() {
       });
       if (result.canceled || !result.assets[0]) return;
       const asset = result.assets[0];
-      setUploadingAvatar(true);
+      setUploading(true);
       const uploaded = await uploadFile({
         uri: asset.uri,
         name: asset.fileName ?? `avatar-${Date.now()}.jpg`,
         type: asset.mimeType ?? "image/jpeg",
         size: asset.fileSize,
       });
-      setAvatarUrl(uploaded.url);
-    } catch (error) {
-      setEditError(
-        error instanceof ApiError ? error.message : "بارگذاری تصویر ناموفق بود."
+      const updated = await updateMe({ avatar_url: uploaded.url });
+      await syncUser(updated);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined
+      );
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof ApiError ? uploadError.message : "آپلود تصویر ناموفق بود"
       );
     } finally {
-      setUploadingAvatar(false);
+      setUploading(false);
     }
   };
 
-  const saveProfile = async () => {
-    setSaving(true);
-    setEditError(null);
+  const removeAvatar = async () => {
+    if (uploading || deleting) return;
+    setDeleting(true);
+    setError(null);
     try {
-      const updated = await updateMe({
-        bio: bio.trim(),
-        avatar_url: avatarUrl.trim() || null,
-      });
-      await setUser(updated);
-      setEditOpen(false);
-      void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
-      void queryClient.invalidateQueries({ queryKey: qk.userStats(updated.id) });
-    } catch (error) {
-      setEditError(
-        error instanceof ApiError ? error.message : "ذخیرهٔ پروفایل ناموفق بود."
+      const updated = await deleteMyAvatar();
+      await syncUser(updated);
+    } catch (removeError) {
+      setError(
+        removeError instanceof ApiError ? removeError.message : "حذف تصویر ناموفق بود"
       );
     } finally {
-      setSaving(false);
+      setDeleting(false);
+    }
+  };
+
+  const saveBio = async () => {
+    if (savingBio) return;
+    setSavingBio(true);
+    setError(null);
+    try {
+      const updated = await updateMe({ bio: bio.trim() });
+      await syncUser(updated);
+      setBioSaved(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+        () => undefined
+      );
+      setTimeout(() => setBioSaved(false), 1800);
+    } catch (saveError) {
+      setError(saveError instanceof ApiError ? saveError.message : "ذخیره بیو ناموفق بود");
+    } finally {
+      setSavingBio(false);
     }
   };
 
@@ -206,210 +214,242 @@ export default function ProfileScreen() {
     }
   };
 
-  const role = (user?.role ?? "member") as Role;
-  const staff = isStaff(user);
-  const owner = isOwner(user);
+  const memberSince = user?.created_at
+    ? parseDue(user.created_at)?.toLocaleDateString("fa-IR-u-nu-latn") ?? "—"
+    : "—";
 
   return (
     <Screen edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={stats.isRefetching}
-            onRefresh={() => void stats.refetch()}
-            tintColor={colors.amber}
-            colors={[colors.amber]}
-            progressBackgroundColor={colors.panel}
-          />
-        }
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: tabBarReserve + insets.bottom + 28 },
+        ]}
       >
-        <View style={styles.topBar}>
-          <AppText variant="title">پروفایل</AppText>
-          <Pill label={`نسخه ${version}`} tone="muted" icon="cube-outline" />
-        </View>
-
-        <Animated.View entering={FadeInDown.duration(420)}>
-          <GlassCard contentStyle={styles.hero}>
-            <Avatar
-              name={user?.username}
-              uri={user?.avatar_url}
-              size="xl"
-              ring
-            />
-            <View style={styles.heroText}>
-              <AppText variant="title">{user?.username ?? "—"}</AppText>
-              <View style={styles.heroPills}>
-                <Pill
-                  label={roleLabel(role)}
-                  tone={roleColor(role) as "amber" | "teal" | "red" | "blue" | "muted"}
-                  icon={owner ? "shield-checkmark-outline" : "person-outline"}
-                />
-                {user?.created_at ? (
-                  <AppText variant="caption" color={colors.faint}>
-                    از {faDate(user.created_at, "dayMonth")}
-                  </AppText>
-                ) : null}
-              </View>
-              <AppText
-                variant="caption"
-                color={user?.bio ? colors.textSoft : colors.faint}
-                align="center"
-                numberOfLines={3}
-                style={{ marginTop: 2 }}
-              >
-                {user?.bio?.trim() || "بیوگرافی هنوز خالی است."}
-              </AppText>
-            </View>
-            <Button
-              label="ویرایش پروفایل"
-              icon="create-outline"
-              variant="ghost"
-              size="sm"
-              fullWidth={false}
-              onPress={openEdit}
-            />
-          </GlassCard>
-        </Animated.View>
-
-        <View style={styles.statRow}>
-          <StatTile
-            label="رتبه"
-            value={entry ? fmtNum(entry.rank) : "—"}
-            icon="podium-outline"
-            hint="جایگاه در تیم"
-          />
-          <StatTile
-            label="درصد تحویل"
-            value={entry ? fmtPercent(entry.completion_percentage) : "—"}
-            icon="analytics-outline"
-            tone={colors.teal}
-          />
-        </View>
-        <View style={styles.statRow}>
-          <StatTile
-            label="زنجیره"
-            value={entry ? `${fmtNum(entry.current_streak)} روز` : "—"}
-            icon="flame-outline"
-            tone={colors.red}
-          />
-          <StatTile
-            label="بهترین"
-            value={entry ? `${fmtNum(entry.best_streak)} روز` : "—"}
-            icon="trophy-outline"
-            tone={colors.amber}
-          />
-        </View>
-
-        {entry ? (
-          <SolidCard style={{ marginTop: spacing.md, padding: spacing.md, gap: spacing.sm }}>
-            <View style={styles.weekHead}>
-              <AppText variant="label" color={colors.muted}>
-                فعالیت هفته
-              </AppText>
-              <AppText variant="caption" color={colors.faint}>
-                {fmtNum(entry.completed_count)} از {fmtNum(entry.total_assignments)} تکلیف
-              </AppText>
-            </View>
-            <View style={{ alignSelf: "center" }}>
-              <WeekBars data={entry.weekly_activity} maxBarHeight={38} />
-            </View>
-          </SolidCard>
-        ) : null}
-
-        <View style={styles.section}>
-          <SectionTitle title="مدیریت" hint="دسترسی‌ها بر اساس نقش" />
-          <SolidCard style={{ paddingHorizontal: spacing.md }}>
-            {staff ? (
-              <ActionRow
-                icon="people-outline"
-                label="مدیریت کاربران"
-                hint="نقش‌ها، کد دسترسی و فعال‌سازی اعضا"
-                onPress={() => router.push("/users")}
-              />
-            ) : null}
-            <ActionRow
-              icon="cloud-download-outline"
-              label={checkingUpdate ? "در حال بررسی…" : "بررسی به‌روزرسانی"}
-              hint="دریافت نسخهٔ تازه بدون نصب مجدد"
-              onPress={() => void checkForUpdate()}
-            />
-            <ActionRow
-              icon="information-circle-outline"
-              label="دربارهٔ ArchSchool"
-              hint="کارگاه کلاس یازدهم · نسخهٔ موبایل"
-              onPress={() =>
-                Alert.alert(
-                  "ArchSchool",
-                  `نسخهٔ موبایل ${version}\nکارگاه کلاس یازدهم\n\nگفتگو، تکالیف و رتبه‌بندی در یک فضای مشترک.`
-                )
-              }
-            />
-            <ActionRow
-              icon="log-out-outline"
-              label="خروج از حساب"
-              tone={colors.red}
-              onPress={confirmLogout}
-              last
-            />
-          </SolidCard>
-        </View>
-
-        <View style={styles.footer}>
-          <AppText variant="caption" color={colors.faint} align="center">
-            ArchSchool · ساخته‌شده برای یک کلاس، نه یک فید بی‌پایان.
+        <View style={{ marginBottom: 20 }}>
+          <Kicker text="settings" dot style={{ marginBottom: 10 }} />
+          <AppText style={{ fontFamily: fonts.black, fontSize: 24, lineHeight: 33, letterSpacing: -0.4 }}>
+            تنظیمات
+          </AppText>
+          <AppText color={colors.faint} style={{ fontSize: 13, lineHeight: 22, marginTop: 4 }}>
+            حساب کاربری و اطلاعات سیستم
           </AppText>
         </View>
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+        {/* account */}
+        <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
+          <View style={styles.accountHead}>
+            <View style={{ width: 76, height: 76 }}>
+              <Avatar name={user?.username} uri={user?.avatar_url} size="xl" ring />
+              <Pressable
+                onPress={() => void pickAvatar()}
+                disabled={uploading || deleting}
+                style={[styles.avatarFab, { left: -4, bottom: -4 }]}
+                accessibilityRole="button"
+                accessibilityLabel="تغییر تصویر پروفایل"
+                hitSlop={6}
+              >
+                {uploading ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <Ionicons name="camera" size={14} color={colors.white} />
+                )}
+              </Pressable>
+              {user?.avatar_url ? (
+                <Pressable
+                  onPress={() => void removeAvatar()}
+                  disabled={deleting || uploading}
+                  style={[styles.avatarFab, styles.avatarFabDanger, { right: -4, bottom: -4 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="حذف عکس پروفایل"
+                  hitSlop={6}
+                >
+                  {deleting ? (
+                    <ActivityIndicator size="small" color={colors.danger} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={13} color={colors.danger} />
+                  )}
+                </Pressable>
+              ) : null}
+            </View>
 
-      <Sheet
-        visible={editOpen}
-        onClose={() => setEditOpen(false)}
-        title="ویرایش پروفایل"
-        subtitle="نام کاربری را ادمین تغییر می‌دهد"
-        footer={
-          <Button
-            label="ذخیرهٔ تغییرات"
-            icon="checkmark"
-            onPress={() => void saveProfile()}
-            loading={saving}
-            disabled={uploadingAvatar}
-          />
-        }
-      >
-        <View style={styles.editAvatar}>
-          <Avatar name={user?.username} uri={avatarUrl || user?.avatar_url} size="lg" ring />
-          <Button
-            label={uploadingAvatar ? "در حال بارگذاری…" : "تغییر تصویر"}
-            icon="image-outline"
-            variant="ghost"
-            size="sm"
-            fullWidth={false}
-            onPress={() => void pickAvatar()}
-          />
-        </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <AppText
+                ltr
+                numberOfLines={1}
+                style={{ fontFamily: fonts.bold, fontSize: 18, lineHeight: 26 }}
+              >
+                {user?.username ?? "—"}
+              </AppText>
+              <View style={styles.accountMeta}>
+                <View style={styles.badge}>
+                  <PulseDot size={5} tone={colors.white} />
+                  <AppText color={colors.textSoft} style={{ fontSize: 10, lineHeight: 14 }}>
+                    {user?.is_admin ? "admin" : "user"}
+                  </AppText>
+                </View>
+                <MonoLabel>{role.toUpperCase()}</MonoLabel>
+              </View>
+            </View>
+          </View>
 
-        <Field
-          label="بیوگرافی"
-          value={bio}
-          onChangeText={setBio}
-          placeholder="یک جمله دربارهٔ خودت…"
-          multiline
-          maxLength={500}
-        />
+          {/* bio */}
+          <View style={{ marginTop: 20 }}>
+            <View style={styles.bioHead}>
+              <MonoLabel>BIO</MonoLabel>
+              <AppText ltr color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
+                {fmtNum(bio.length)}/200
+              </AppText>
+            </View>
+            <TextInput
+              value={bio}
+              onChangeText={(value) => {
+                setBio(value);
+                setBioSaved(false);
+              }}
+              maxLength={200}
+              multiline
+              placeholder="یک بیو کوتاه درباره خودت بنویس…"
+              placeholderTextColor={colors.faint}
+              style={styles.bioInput}
+              textAlignVertical="top"
+              accessibilityLabel="بیوگرافی"
+            />
+            <View style={styles.bioFoot}>
+              <AppText
+                numberOfLines={2}
+                color={error ? colors.danger : colors.faint}
+                style={{ fontSize: 11, lineHeight: 17, flex: 1 }}
+              >
+                {error ? error : bioSaved ? "ذخیره شد" : "برای نمایش در پروفایل"}
+              </AppText>
+              <Pressable
+                onPress={() => void saveBio()}
+                disabled={savingBio || bio.trim() === (user?.bio ?? "")}
+                style={({ pressed }) => [
+                  styles.ghostButton,
+                  (savingBio || bio.trim() === (user?.bio ?? "")) && { opacity: 0.5 },
+                  pressed && { opacity: 0.8 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="ذخیره بیو"
+              >
+                {savingBio ? (
+                  <ActivityIndicator size="small" color={colors.textSoft} />
+                ) : bioSaved ? (
+                  <Ionicons name="checkmark" size={13} color={colors.textSoft} />
+                ) : null}
+                <AppText color={colors.textSoft} style={{ fontFamily: fonts.semibold, fontSize: 11 }}>
+                  ذخیره بیو
+                </AppText>
+              </Pressable>
+            </View>
+          </View>
 
-        {editError ? (
-          <View style={styles.editError}>
-            <Ionicons name="alert-circle" size={14} color={colors.red} />
-            <AppText variant="caption" color={colors.red} style={{ flex: 1 }}>
-              {editError}
+          {/* info rows */}
+          <View style={styles.infoBlock}>
+            <InfoRow icon="finger-print" label="USERNAME" value={user?.username ?? "—"} mono />
+            <InfoRow
+              icon="shield-checkmark"
+              label="ROLE"
+              value={roleText(role, Boolean(user?.is_admin))}
+            />
+            <InfoRow icon="hardware-chip" label="STATUS" value={user?.is_active ? "فعال" : "غیرفعال"} />
+            <InfoRow icon="calendar" label="MEMBER SINCE" value={memberSince} />
+          </View>
+        </Panel>
+
+        {/* session */}
+        <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
+          <MonoLabel style={{ marginBottom: 4 }}>// SESSION</MonoLabel>
+          <AppText color={colors.faint} style={{ fontSize: 14, lineHeight: 22, marginBottom: 16 }}>
+            از حساب کاربری خارج شو
+          </AppText>
+          <Pressable
+            onPress={confirmLogout}
+            style={({ pressed }) => [styles.dangerButton, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityLabel="خروج از حساب"
+          >
+            <Ionicons name="log-out-outline" size={15} color={colors.danger} />
+            <AppText color={colors.danger} style={{ fontFamily: fonts.semibold, fontSize: 13 }}>
+              خروج از حساب
+            </AppText>
+          </Pressable>
+        </Panel>
+
+        {/* mobile-only management + updates */}
+        <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
+          <MonoLabel style={{ marginBottom: 8 }}>// APP</MonoLabel>
+          {staff ? (
+            <Pressable
+              onPress={() => router.push("/users")}
+              style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
+              accessibilityRole="button"
+            >
+              <IconTile name="people" size={36} iconSize={16} tone={colors.white} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 20 }}>
+                  مدیریت کاربران
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
+                  نقش‌ها، کد دسترسی و فعال‌سازی اعضا
+                </AppText>
+              </View>
+              <Ionicons name="chevron-back" size={15} color={colors.faint} />
+            </Pressable>
+          ) : null}
+
+          <Pressable
+            onPress={() => void checkForUpdate()}
+            style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
+            accessibilityRole="button"
+          >
+            <IconTile
+              name="cloud-download"
+              size={36}
+              iconSize={16}
+              tone={colors.textSoft}
+            />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <AppText style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 20 }}>
+                {checkingUpdate ? "در حال بررسی…" : "بررسی به‌روزرسانی"}
+              </AppText>
+              <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
+                دریافت نسخهٔ تازه بدون نصب مجدد
+              </AppText>
+            </View>
+            {checkingUpdate ? (
+              <ActivityIndicator size="small" color={colors.faint} />
+            ) : (
+              <Ionicons name="chevron-back" size={15} color={colors.faint} />
+            )}
+          </Pressable>
+
+          {owner ? (
+            <View style={styles.ownerHint}>
+              <Ionicons name="shield-checkmark" size={12} color={colors.amber} />
+              <AppText color={colors.amber} style={{ fontSize: 10.5, lineHeight: 16, flex: 1 }}>
+                حساب مالک — دسترسی کامل به آمار سرور و کدهای کاربران.
+              </AppText>
+            </View>
+          ) : null}
+        </Panel>
+
+        {/* about */}
+        <Panel corners contentStyle={styles.accountPad}>
+          <MonoLabel style={{ marginBottom: 8 }}>// ABOUT</MonoLabel>
+          <View style={styles.aboutRow}>
+            <AppText color={colors.text} style={{ fontSize: 14, lineHeight: 21 }}>
+              ArchSchool
+            </AppText>
+            <AppText ltr color={colors.faint} style={{ fontFamily: fonts.medium, fontSize: 12 }}>
+              v{version}
             </AppText>
           </View>
-        ) : null}
-      </Sheet>
+        </Panel>
+      </ScrollView>
     </Screen>
   );
 }
@@ -418,65 +458,137 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: screenGutter,
     paddingTop: spacing.xs,
-    paddingBottom: 120,
   },
-  topBar: {
+  accountPad: { padding: 16 },
+  accountHead: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: spacing.md,
+    gap: 16,
   },
-  hero: {
-    padding: spacing.xl,
-    gap: spacing.md,
-    alignItems: "center",
-  },
-  heroText: { alignItems: "center", gap: 3 },
-  heroPills: {
+  accountMeta: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: spacing.xs,
+    gap: 8,
+    marginTop: 6,
+    flexWrap: "wrap",
   },
-  statRow: {
-    flexDirection: "row-reverse",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-  },
-  weekHead: {
+  badge: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.white12,
+    backgroundColor: colors.white04,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  section: { paddingTop: spacing.xl },
-  actionRow: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  actionIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+  avatarFab: {
+    position: "absolute",
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.20)",
+    backgroundColor: colors.black,
   },
-  footer: { paddingTop: spacing.xl, paddingHorizontal: spacing.lg },
-  editAvatar: {
+  avatarFabDanger: {
+    borderColor: "rgba(248,113,113,0.40)",
+  },
+  bioHead: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
+    justifyContent: "space-between",
+    marginBottom: 6,
   },
-  editError: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: spacing.xs,
-    padding: spacing.sm,
-    borderRadius: radius.sm,
-    backgroundColor: colors.redSoft,
+  bioInput: {
+    minHeight: 64,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(242,104,107,0.3)",
+    borderColor: colors.white10,
+    backgroundColor: "rgba(255,255,255,0.02)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.text,
+    fontFamily: fonts.regular,
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: "right",
+  },
+  bioFoot: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 8,
+  },
+  ghostButton: {
+    minHeight: 36,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.white12,
+    backgroundColor: colors.white03,
+  },
+  infoBlock: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  infoRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  infoRight: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+    flexShrink: 0,
+  },
+  dangerButton: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(248,113,113,0.30)",
+    backgroundColor: "transparent",
+  },
+  linkRow: {
+    minHeight: 52,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 8,
+  },
+  ownerHint: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.25)",
+    backgroundColor: "rgba(251,191,36,0.07)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  aboutRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 });

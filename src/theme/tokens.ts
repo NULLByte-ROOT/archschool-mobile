@@ -1,44 +1,123 @@
 /**
- * ArchSchool's visual tokens.
+ * ArchSchool's visual tokens — exact mirror of the web theme.
  *
- * Mirrors the web app: true-black paper, neutral graphite panels and
- * `rgba(255,255,255,0.03)` glass. Amber stays as the single warm signal for
- * streaks/deadlines; everything else is monochrome.
+ * Source of truth: `frontend/src/index.css` (`@theme` block) plus the
+ * `@media (max-width: 768px)` overrides that decide how the web actually looks
+ * on a phone:
+ *
+ *   .panel / .glass  ->  rgba(9,9,14,0.92), 1px rgba(255,255,255,0.08),
+ *                        no shadow, no backdrop blur, no noise
+ *
+ * Every colour below is copied from that file. Do not invent new hues: the web
+ * palette is true-black surfaces, white/monochrome accent, amber only for
+ * streaks/medals/warnings and emerald only for success/breaks.
  */
 
 export const colors = {
-  ink: "#000000",
-  inkRaised: "#060608",
-  panel: "#0b0b0f",
-  panelSolid: "#131318",
-  panelSoft: "rgba(255,255,255,0.035)",
-  line: "rgba(255,255,255,0.10)",
+  /* ---------- surfaces (web: bg-50 … bg-700) ---------- */
+  ink: "#000000", // bg-50 / body
+  inkRaised: "#060608", // bg-100 / sheets
+  panel: "#0b0b0f", // bg-200
+  panelSolid: "#131318", // bg-300
+  panelDeep: "#1b1b21", // bg-400
+  /** The phone `.panel` background (web media query). */
+  panelPhone: "rgba(9,9,14,0.92)",
+  /** The desktop `.panel` background — used only for floating glass. */
+  panelGlass: "rgba(12,12,16,0.82)",
+
+  /* ---------- translucency ladder used by the web ---------- */
+  white03: "rgba(255,255,255,0.03)",
+  white04: "rgba(255,255,255,0.04)",
+  white05: "rgba(255,255,255,0.05)",
+  white06: "rgba(255,255,255,0.06)",
+  white07: "rgba(255,255,255,0.07)",
+  white08: "rgba(255,255,255,0.08)",
+  white10: "rgba(255,255,255,0.10)",
+  white12: "rgba(255,255,255,0.12)",
+  white15: "rgba(255,255,255,0.15)",
+  white18: "rgba(255,255,255,0.18)",
+  panelSoft: "rgba(255,255,255,0.03)",
+
+  /* ---------- borders ---------- */
+  /** `.panel` border on the web: rgba(255,255,255,0.08). */
+  line: "rgba(255,255,255,0.08)",
+  /** chip / input borders on the web: rgba(255,255,255,0.10). */
+  lineChip: "rgba(255,255,255,0.10)",
   lineStrong: "rgba(255,255,255,0.18)",
-  text: "#fafafa",
-  textSoft: "#d4d4d8",
-  muted: "#a1a1aa",
-  faint: "#71717a",
-  amber: "#F2B455",
-  amberDeep: "#C98A2E",
-  amberSoft: "rgba(242,180,85,0.12)",
-  amberLine: "rgba(242,180,85,0.32)",
-  teal: "#4FD1B5",
-  tealSoft: "rgba(79,209,181,0.12)",
-  red: "#F2686B",
-  redSoft: "rgba(242,104,107,0.12)",
-  blue: "#8AB4FF",
-  blueSoft: "rgba(138,180,255,0.12)",
+
+  /* ---------- text (web: fg-100 … fg-700) ---------- */
+  text: "#fafafa", // fg-100
+  textSoft: "#d4d4d8", // fg-300
+  muted: "#a1a1aa", // fg-700
+  faint: "#7c7c86", // fg-500
+  bodyCopy: "#ededed", // body colour
+
+  /* ---------- accents ---------- */
+  /** Web `--color-warning`; streaks, medals, the active tab. */
+  amber: "#FBBF24",
+  amberDeep: "#F59E0B",
+  amberSoft: "rgba(251,191,36,0.12)",
+  amberLine: "rgba(251,191,36,0.32)",
+  /** orange-400 — the flame in the web streak hero. */
+  flame: "#FB923C",
+  flameSoft: "rgba(251,146,60,0.15)",
+  flameLine: "rgba(251,146,60,0.35)",
+  flameText: "#FED7AA",
+
+  success: "#34D399", // web --color-success
+  successSoft: "rgba(52,211,153,0.10)",
+  successLine: "rgba(52,211,153,0.30)",
+  warning: "#FBBF24", // web --color-warning
+  danger: "#F87171", // web --color-danger
+  dangerSoft: "rgba(248,113,113,0.10)",
+  dangerLine: "rgba(248,113,113,0.30)",
+  emerald: "#6EE7B7",
+  emeraldPale: "#D1FAE5",
+
+  /* aliases kept for the existing screens */
+  teal: "#34D399",
+  tealSoft: "rgba(52,211,153,0.10)",
+  red: "#F87171",
+  redSoft: "rgba(248,113,113,0.10)",
+  blue: "#7DD3FC", // sky-300 (friend badge on the web)
+  blueSoft: "rgba(125,211,252,0.12)",
+
   white: "#FFFFFF",
   black: "#000000",
+
+  /* ---------- deadline tones (web TONE_*) ---------- */
+  dueRed: "#EF4444",
+  dueRedText: "#F87171",
+  dueRedSoft: "rgba(239,68,68,0.10)",
+  dueYellow: "#EAB308",
+  dueYellowText: "#FACC15",
+  dueYellowSoft: "rgba(234,179,8,0.10)",
+
+  /* ---------- ranks (web leaderboard medals) ---------- */
+  rankGold: "#FBBF24",
+  rankSilver: "#D4D4D8",
+  rankBronze: "#C98455",
+
+  /* ---------- streak hero (web) ---------- */
+  heroRiskBg: "#140607",
+  heroCalmBg: "#0d0805",
+  heroRiskLine: "rgba(239,68,68,0.45)",
+  heroCalmLine: "rgba(249,115,22,0.30)",
 } as const;
 
 export const gradients = {
   hero: ["#18181b", "#050506"] as const,
-  heroGlow: ["rgba(242,180,85,0.18)", "rgba(242,180,85,0)"] as const,
-  screen: ["#09090b", "#000000"] as const,
-  amber: ["#F7C978", "#E8A53C"] as const,
-  danger: ["#F2686B", "#B73B4B"] as const,
-};
+  heroGlow: ["rgba(251,191,36,0.18)", "rgba(251,191,36,0)"] as const,
+  screen: ["#000000", "#000000"] as const,
+  amber: ["#FCD34D", "#F59E0B"] as const,
+  flame: ["#FB923C", "#F97316"] as const,
+  danger: ["#F87171", "#B73B4B"] as const,
+  /** The web streak number: #fafafa -> #fef3c7 -> #fb923c. */
+  streakNumber: ["#fafafa", "#fef3c7", "#fb923c"] as const,
+  /** `مسیر` fill of the web class-completion bar. */
+  progress: ["#34d399", "#6ee7b7", "#d1fae5"] as const,
+  whiteTile: ["rgba(255,255,255,0.14)", "rgba(255,255,255,0.02)"] as const,
+} as const;
 
 export const fonts = {
   regular: "Vazirmatn_400Regular",
@@ -51,9 +130,9 @@ export const fonts = {
 export const radius = {
   xs: 8,
   sm: 12,
-  md: 18,
-  lg: 24,
-  xl: 30,
+  md: 16, // web `.panel`
+  lg: 24, // web `rounded-3xl`
+  xl: 28, // web hero / bottom sheets
   pill: 999,
 } as const;
 
@@ -68,11 +147,20 @@ export const spacing = {
   huge: 44,
 } as const;
 
-export const screenGutter = 20;
-export const tabBarHeight = 64;
+/** The web renders page content with `p-4` on a phone. */
+export const screenGutter = 16;
+
+/** Floating glass tab bar geometry (content must reserve this much space). */
+export const tabBarHeight = 62;
+export const tabBarMargin = 16;
+export const tabBarFloatOffset = 10;
+/** Total space a scrolling screen must leave at the bottom. */
+export const tabBarReserve = tabBarHeight + tabBarMargin;
 
 export const shadows = {
   card: "0px 18px 38px -26px rgba(0,0,0,0.95)",
   lift: "0px 24px 48px -22px rgba(0,0,0,0.9)",
-  amber: "0px 10px 30px -12px rgba(242,180,85,0.45)",
+  amber: "0px 10px 30px -12px rgba(251,191,36,0.45)",
+  /** Floating glass pill: soft drop shadow, iOS-26 style. */
+  glass: "0px 18px 44px -12px rgba(0,0,0,0.85)",
 } as const;
