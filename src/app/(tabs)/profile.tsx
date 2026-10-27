@@ -68,9 +68,10 @@ function InfoRow({
       </View>
       <AppText
         numberOfLines={1}
+        ellipsizeMode="middle"
         ltr={mono}
         color={colors.text}
-        style={{ fontSize: 14, lineHeight: 21, flexShrink: 1, textAlign: "left" }}
+        style={styles.infoValue}
       >
         {value}
       </AppText>
@@ -379,6 +380,7 @@ export default function ProfileScreen() {
               <AppText
                 ltr
                 numberOfLines={1}
+                ellipsizeMode="middle"
                 style={{ fontFamily: fonts.bold, fontSize: 18, lineHeight: 26 }}
               >
                 {user?.username ?? "—"}
@@ -525,10 +527,10 @@ export default function ProfileScreen() {
           ) : null}
         </Panel>
 
-        {/* admin-only tools */}
-        {staff ? (
+        {/* owner-only tools */}
+        {owner ? (
           <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
-            <MonoLabel style={{ marginBottom: 8 }}>// ADMIN</MonoLabel>
+            <MonoLabel style={{ marginBottom: 8 }}>// OWNER</MonoLabel>
             <Pressable
               onPress={() => router.push("/admin-bells")}
               style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
@@ -778,15 +780,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
   },
   infoRight: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     flexShrink: 0,
+  },
+  infoValue: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "left",
+    fontVariant: ["tabular-nums"],
   },
   dangerButton: {
     minHeight: 44,

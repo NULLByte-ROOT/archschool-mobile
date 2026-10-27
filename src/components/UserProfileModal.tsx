@@ -359,18 +359,35 @@ export function UserProfileModal({
                     </AppText>
                   </View>
                   <View style={styles.chartBody}>
-                    <AreaChart data={chart.length ? chart : [{ label: "", value: 0 }]} height={120} />
+                    <AreaChart
+                      data={chart.length ? chart : [{ label: "", value: 0 }]}
+                      height={120}
+                      unit="تکمیل"
+                      dotColors={chart.map((point) =>
+                        point.value > 0 ? "#34d399" : "#f87171"
+                      )}
+                    />
                   </View>
                   <View style={styles.axisRow}>
                     {chart.map((point, index) => (
-                      <AppText
-                        key={`${point.label}-${index}`}
-                        align="center"
-                        color={colors.faint}
-                        style={styles.axisText}
-                      >
-                        {point.label}
-                      </AppText>
+                      <View key={`${point.label}-${index}`} style={styles.axisCol}>
+                        <View
+                          style={[
+                            styles.dayDot,
+                            {
+                              backgroundColor:
+                                point.value > 0 ? "#34d399" : "#f87171",
+                            },
+                          ]}
+                        />
+                        <AppText
+                          align="center"
+                          color={colors.faint}
+                          style={styles.axisText}
+                        >
+                          {point.label}
+                        </AppText>
+                      </View>
                     ))}
                   </View>
                 </View>
@@ -595,7 +612,9 @@ const styles = StyleSheet.create({
   chartMeta: { fontSize: 10, lineHeight: 15 },
   chartBody: { direction: "ltr" },
   axisRow: { flexDirection: "row-reverse" },
-  axisText: { fontSize: 9, lineHeight: 13, flex: 1 },
+  axisCol: { flex: 1, alignItems: "center", gap: 3 },
+  dayDot: { width: 5, height: 5, borderRadius: 3 },
+  axisText: { fontSize: 9, lineHeight: 13 },
   bio: {
     borderRadius: radius.md,
     borderWidth: 1,

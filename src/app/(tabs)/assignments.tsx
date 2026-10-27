@@ -26,6 +26,7 @@ import { AreaChart, Donut, SegmentedBar } from "@/components/charts";
 import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
 import { Screen } from "@/components/Screen";
 import { SelectSheet, type SelectOption } from "@/components/SelectSheet";
+import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar } from "@/components/ui";
 import {
   Corners,
@@ -524,7 +525,7 @@ function WorkloadPanel({ items, now }: { items: Assignment[]; now: number }) {
       ) : (
         <>
           <View style={{ direction: "ltr" }}>
-            <AreaChart data={data} height={150} />
+            <AreaChart data={data} height={150} unit="تکلیف" />
           </View>
           <View style={styles.axisRow}>
             {data.map((point, index) => (
@@ -545,26 +546,49 @@ function WorkloadPanel({ items, now }: { items: Assignment[]; now: number }) {
 }
 
 function SubjectsPanel({ items }: { items: Assignment[] }) {
+  const [selected, setSelected] = useState<number | null>(null);
+
   const slices = useMemo(() => {
     const palette = ["#fafafa", "#a5b4fc", "#6ee7b7", "#e4e4e7", "#f87171", "#94a3b8"];
-    const counts = new Map<string, number>();
+    const counts = new Map<string, { total: number; completed: number }>();
     for (const item of items) {
       if (!item.subject_id) continue;
-      counts.set(item.subject_id, (counts.get(item.subject_id) ?? 0) + 1);
+      const entry = counts.get(item.subject_id) ?? { total: 0, completed: 0 };
+      entry.total += 1;
+      if (item.is_completed_by_me) entry.completed += 1;
+      counts.set(item.subject_id, entry);
     }
-    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const ranked = [...counts.entries()].sort((a, b) => b[1].total - a[1].total);
     const top = ranked.slice(0, 5);
-    const rest = ranked.slice(5).reduce((sum, [, value]) => sum + value, 0);
-    const result = top.map(([id, value], index) => ({
+    const rest = ranked.slice(5).reduce(
+      (acc, [, stat]) => ({
+        total: acc.total + stat.total,
+        completed: acc.completed + stat.completed,
+      }),
+      { total: 0, completed: 0 }
+    );
+    const result = top.map(([id, stat], index) => ({
       label: subjectName(id) || id,
-      value,
+      value: stat.total,
+      completed: stat.completed,
       color: palette[index % palette.length],
     }));
-    if (rest > 0) result.push({ label: "سایر درس‌ها", value: rest, color: palette[5] });
+    if (rest.total > 0) {
+      result.push({
+        label: "سایر درس‌ها",
+        value: rest.total,
+        completed: rest.completed,
+        color: palette[5],
+      });
+    }
     return result;
   }, [items]);
 
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  const active = selected !== null ? slices[selected] ?? null : null;
+  const activePercent = active && active.value > 0
+    ? Math.round((active.completed / active.value) * 100)
+    : 0;
 
   return (
     <Panel corners contentStyle={styles.panelPad} style={{ marginBottom: 16 }}>
@@ -592,6 +616,10 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
               thickness={20}
               centerValue={fmtNum(total)}
               centerLabel="کل تکلیف"
+              onSlicePress={(index) => {
+                void Haptics.selectionAsync().catch(() => undefined);
+                setSelected(index);
+              }}
             />
             <View style={styles.donutCenter} pointerEvents="none">
               <AppText ltr style={{ fontFamily: fonts.black, fontSize: 20, lineHeight: 27 }}>
@@ -604,8 +632,14 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
           </View>
 
           <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
-            {slices.map((slice) => (
-              <View key={slice.label} style={styles.legendRow}>
+            {slices.map((slice, index) => (
+              <Pressable
+                key={slice.label}
+                onPress={() => setSelected(index)}
+                style={({ pressed }) => [styles.legendRow, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+                accessibilityLabel={`جزئیات ${slice.label}`}
+              >
                 <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
                 <AppText numberOfLines={1} color={colors.textSoft} style={{ fontSize: 11, flex: 1 }}>
                   {slice.label}
@@ -613,11 +647,64 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
                 <AppText ltr color={colors.white} style={{ fontFamily: fonts.bold, fontSize: 12 }}>
                   {fmtNum(slice.value)}
                 </AppText>
-              </View>
+              </Pressable>
             ))}
           </View>
         </View>
       )}
+
+      <Sheet
+        visible={active !== null}
+        onClose={() => setSelected(null)}
+        title={active?.label ?? ""}
+        subtitle="جزئیات درس"
+        scroll={false}
+      >
+        {active ? (
+          <View style={{ gap: 12 }}>
+            <View style={styles.subjectSheetHead}>
+              <View style={[styles.subjectSheetDot, { backgroundColor: active.color }]} />
+              <AppText style={{ fontFamily: fonts.bold, fontSize: 14, lineHeight: 21, flex: 1 }}>
+                {active.label}
+              </AppText>
+            </View>
+            <View style={styles.subjectSheetGrid}>
+              <View style={styles.subjectSheetCell}>
+                <AppText ltr style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 24 }}>
+                  {fmtNum(active.value)}
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
+                  تکلیف
+                </AppText>
+              </View>
+              <View style={styles.subjectSheetCell}>
+                <AppText ltr style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 24 }}>
+                  {fmtNum(active.completed)}
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
+                  انجام‌شده
+                </AppText>
+              </View>
+              <View style={styles.subjectSheetCell}>
+                <AppText ltr style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 24 }}>
+                  {`${fmtNum(activePercent)}%`}
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
+                  درصد تکمیل
+                </AppText>
+              </View>
+            </View>
+            <View style={styles.subjectSheetTrack}>
+              <View
+                style={[
+                  styles.subjectSheetFill,
+                  { width: `${activePercent}%`, backgroundColor: active.color },
+                ]}
+              />
+            </View>
+          </View>
+        ) : null}
+      </Sheet>
     </Panel>
   );
 }
@@ -1412,6 +1499,42 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   legendDot: { width: 9, height: 9, borderRadius: 5 },
+
+  subjectSheetHead: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white03,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  subjectSheetDot: { width: 12, height: 12, borderRadius: 6 },
+  subjectSheetGrid: {
+    flexDirection: "row-reverse",
+    gap: 8,
+  },
+  subjectSheetCell: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    gap: 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white03,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+  },
+  subjectSheetTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+  },
+  subjectSheetFill: { height: "100%", borderRadius: 4 },
 
   activityTop: {
     flexDirection: "row-reverse",

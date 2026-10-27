@@ -50,6 +50,8 @@ interface AppTextProps {
   align?: "left" | "right" | "center";
   style?: StyleProp<TextStyle>;
   numberOfLines?: number;
+  /** RN ellipsis position — used by the profile tiles for long values. */
+  ellipsizeMode?: "head" | "middle" | "tail" | "clip";
   /** Force LTR for access codes, room ids and numeric hints. */
   ltr?: boolean;
   onPress?: () => void;
@@ -62,6 +64,7 @@ export function AppText({
   align,
   style,
   numberOfLines,
+  ellipsizeMode,
   ltr = false,
   onPress,
 }: AppTextProps) {
@@ -69,6 +72,7 @@ export function AppText({
     <Text
       onPress={onPress}
       numberOfLines={numberOfLines}
+      ellipsizeMode={ellipsizeMode}
       allowFontScaling
       style={[
         VARIANT_STYLE[variant],

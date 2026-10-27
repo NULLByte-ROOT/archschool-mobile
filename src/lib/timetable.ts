@@ -96,3 +96,58 @@ export function dayForDate(date: Date): Day | undefined {
   const id = map[index];
   return id ? TIMETABLE.find((day) => day.id === id) : undefined;
 }
+
+/**
+ * Index in `TIMETABLE` (Sat = 0 … Wed = 4, Thu/Fri = 5/6 = weekend).
+ * Mirrors `todayIndex()` in the web client.
+ */
+export function todayIndex(base: Date = new Date()): number {
+  return (base.getDay() + 1) % 7;
+}
+
+export function dayAtIndex(index: number): Day | undefined {
+  return index >= 0 && index < TIMETABLE.length ? TIMETABLE[index] : undefined;
+}
+
+/** Sat→Sun→…→Wed→Sat; Thursday/Friday jump straight back to Saturday. */
+export function nextSchoolDayIndex(index: number): number {
+  if (index < 0) return 0;
+  return index < TIMETABLE.length - 1 ? index + 1 : 0;
+}
+
+export interface ScheduleTarget {
+  day: Day | undefined;
+  /** True when the widget is showing a day other than today. */
+  isTomorrow: boolean;
+  /** Today's last bell has rung (or today is a weekend). */
+  isAfterSchool: boolean;
+  /** Today is Thursday/Friday. */
+  isWeekend: boolean;
+  /** The target is literally the calendar day after today. */
+  isLiteralTomorrow: boolean;
+}
+
+/**
+ * «کدام روز را نشان دهیم؟» — exactly the web's `scheduleTarget()`:
+ * during the school day (before the last bell) show today, afterwards and on
+ * holidays show the next school day. That is what stops the widget from
+ * getting stuck on a finished day.
+ */
+export function scheduleTarget(
+  now: number,
+  schoolEndMinutes: number
+): ScheduleTarget {
+  const base = new Date(now);
+  const minutes = base.getHours() * 60 + base.getMinutes();
+  const today = todayIndex(base);
+  const isWeekend = today >= TIMETABLE.length;
+  const isAfterSchool = minutes >= schoolEndMinutes || isWeekend;
+  const dayIndex = isAfterSchool ? nextSchoolDayIndex(today) : today;
+  return {
+    day: dayAtIndex(dayIndex),
+    isTomorrow: isAfterSchool || dayIndex !== today,
+    isAfterSchool,
+    isWeekend,
+    isLiteralTomorrow: dayIndex === (today + 1) % 7,
+  };
+}

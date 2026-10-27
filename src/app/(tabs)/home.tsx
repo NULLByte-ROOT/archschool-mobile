@@ -825,6 +825,18 @@ function TrendPanel({
   const days = trend.slice(-7);
   const total = days.reduce((sum, day) => sum + day.count, 0);
   const max = Math.max(1, ...days.map((day) => day.count));
+  const [active, setActive] = useState<number | null>(null);
+
+  const fullLabel = (iso: string) => {
+    const date = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+    return Number.isNaN(date.getTime())
+      ? ""
+      : date.toLocaleDateString("fa-IR-u-nu-latn", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+        });
+  };
 
   return (
     <Panel corners onPress={onOpen} accessibilityLabel="روند ۷ روز کلاس" contentStyle={st.panelPad}>
@@ -848,40 +860,68 @@ function TrendPanel({
           </AppText>
         </View>
       ) : (
-        <View style={st.trend}>
-          {days.map((day, index) => {
-            const height = 8 + Math.round((day.count / max) * 96);
-            const date = new Date(`${day.date.slice(0, 10)}T00:00:00Z`);
-            const label = Number.isNaN(date.getTime())
-              ? ""
-              : date.toLocaleDateString("fa-IR-u-nu-latn", { weekday: "short" });
-            return (
-              <View key={`${day.date}-${index}`} style={st.trendCol}>
-                <AppText
-                  ltr
-                  color={colors.textSoft}
-                  style={{ fontSize: 9.5, lineHeight: 13, fontVariant: ["tabular-nums"] }}
+        <View>
+          {active !== null && days[active] ? (
+            <View style={st.trendPopover}>
+              <PulseDot size={4} tone={colors.success} glow={false} />
+              <AppText
+                ltr
+                color={colors.text}
+                style={{ fontSize: 10.5, lineHeight: 15, fontVariant: ["tabular-nums"] }}
+              >
+                {`${fullLabel(days[active].date)} · ${fmtNum(days[active].count)} تکمیل`}
+              </AppText>
+            </View>
+          ) : null}
+
+          <View style={st.trend}>
+            {days.map((day, index) => {
+              const height = 8 + Math.round((day.count / max) * 96);
+              const date = new Date(`${day.date.slice(0, 10)}T00:00:00Z`);
+              const label = Number.isNaN(date.getTime())
+                ? ""
+                : date.toLocaleDateString("fa-IR-u-nu-latn", { weekday: "short" });
+              const isActive = active === index;
+              return (
+                <Pressable
+                  key={`${day.date}-${index}`}
+                  style={st.trendCol}
+                  onPress={() =>
+                    setActive((current) => (current === index ? null : index))
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`${label}: ${fmtNum(day.count)} تکمیل`}
                 >
-                  {fmtNum(day.count)}
-                </AppText>
-                <View style={[st.trendBar, { height }]}>
-                  <LinearGradient
-                    colors={["#6ee7b7", "#34d399"]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                  />
-                </View>
-                <AppText
-                  align="center"
-                  color={colors.faint}
-                  style={{ fontSize: 9, lineHeight: 13 }}
-                >
-                  {label}
-                </AppText>
-              </View>
-            );
-          })}
+                  <AppText
+                    ltr
+                    color={colors.textSoft}
+                    style={{ fontSize: 9.5, lineHeight: 13, fontVariant: ["tabular-nums"] }}
+                  >
+                    {fmtNum(day.count)}
+                  </AppText>
+                  <View style={[st.trendBar, { height }, isActive && st.trendBarActive]}>
+                    <LinearGradient
+                      colors={
+                        day.count > 0
+                          ? ["#6ee7b7", "#34d399"]
+                          : ["#f87171", "#ef4444"]
+                      }
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
+                  </View>
+                  <AppText
+                    align="center"
+                    color={colors.faint}
+                    style={{ fontSize: 9, lineHeight: 13 }}
+                  >
+                    {label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       )}
     </Panel>
@@ -1398,10 +1438,27 @@ const st = StyleSheet.create({
     paddingTop: 4,
   },
   trendCol: { flex: 1, alignItems: "center", gap: 4 },
+  trendPopover: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    alignSelf: "center",
+    gap: 6,
+    marginBottom: 8,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(9,9,11,0.94)",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
   trendBar: {
     width: 14,
     borderRadius: 7,
     overflow: "hidden",
     backgroundColor: colors.white06,
+  },
+  trendBarActive: {
+    borderWidth: 1,
+    borderColor: colors.white,
   },
 });

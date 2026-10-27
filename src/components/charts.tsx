@@ -7,7 +7,8 @@
  */
 
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 import Svg, {
   Circle,
   Defs,
@@ -15,6 +16,10 @@ import Svg, {
   Path,
   Stop,
 } from "react-native-svg";
+
+import { AppText } from "@/components/ui";
+import { fmtNum } from "@/lib/format";
+import { colors, fonts, radius } from "@/theme/tokens";
 
 export interface ChartPoint {
   label: string;
@@ -40,17 +45,30 @@ function smoothPath(points: { x: number; y: number }[]): string {
   return d;
 }
 
-/** White area chart, mirroring the web `DeadlineTrendChart`. */
+/**
+ * White area chart, mirroring the web `DeadlineTrendChart`.
+ *
+ * Tapping a column shows a small popover with the exact value + label, the
+ * same information the web reveals on hover. `dotColors` lets callers paint
+ * individual points (the profile uses green for active days, red for empty).
+ */
 export function AreaChart({
   data,
   height = 158,
   color = "#ffffff",
+  unit,
+  dotColors,
 }: {
   data: ChartPoint[];
   height?: number;
   color?: string;
+  /** Appended to the value inside the popover (e.g. «تکلیف»). */
+  unit?: string;
+  /** One colour per point — omit for the plain white dots. */
+  dotColors?: string[];
 }) {
   const [width, setWidth] = useState(0);
+  const [active, setActive] = useState<number | null>(null);
   const padX = 10;
   const padTop = 14;
   const padBottom = 8;
@@ -70,53 +88,113 @@ export function AreaChart({
       } Z`
     : "";
 
+  const activePoint = active !== null ? points[active] : null;
+  const activeValue = active !== null ? data[active]?.value ?? 0 : 0;
+  const popoverWidth = 78;
+  const popoverLeft = activePoint
+    ? Math.max(0, Math.min(width - popoverWidth, activePoint.x - popoverWidth / 2))
+    : 0;
+  const popoverTop = activePoint ? Math.max(0, activePoint.y - 46) : 0;
+
   return (
-    <View style={{ height }} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
+    <View
+      style={{ height }}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+    >
       {width > 0 ? (
-        <Svg width={width} height={height}>
-          <Defs>
-            <SvgGradient id="deadlineFill" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={color} stopOpacity={0.35} />
-              <Stop offset="0.7" stopColor={color} stopOpacity={0.08} />
-              <Stop offset="1" stopColor={color} stopOpacity={0} />
-            </SvgGradient>
-          </Defs>
+        <Animated.View entering={FadeIn.duration(220)} style={{ flex: 1 }}>
+          <Svg width={width} height={height}>
+            <Defs>
+              <SvgGradient id="deadlineFill" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={color} stopOpacity={0.35} />
+                <Stop offset="0.7" stopColor={color} stopOpacity={0.08} />
+                <Stop offset="1" stopColor={color} stopOpacity={0} />
+              </SvgGradient>
+            </Defs>
 
-          {[0.25, 0.5, 0.75].map((fraction) => (
-            <Path
-              key={fraction}
-              d={`M ${padX} ${padTop + innerH * fraction} L ${width - padX} ${
-                padTop + innerH * fraction
-              }`}
-              stroke="rgba(255,255,255,0.06)"
-              strokeWidth={1}
-            />
-          ))}
+            {[0.25, 0.5, 0.75].map((fraction) => (
+              <Path
+                key={fraction}
+                d={`M ${padX} ${padTop + innerH * fraction} L ${width - padX} ${
+                  padTop + innerH * fraction
+                }`}
+                stroke="rgba(255,255,255,0.06)"
+                strokeWidth={1}
+              />
+            ))}
 
-          {area ? <Path d={area} fill="url(#deadlineFill)" /> : null}
-          {line ? (
-            <Path
-              d={line}
-              stroke={color}
-              strokeWidth={2.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
+            {area ? <Path d={area} fill="url(#deadlineFill)" /> : null}
+            {line ? (
+              <Path
+                d={line}
+                stroke={color}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            ) : null}
+
+            {points.map((point, index) => {
+              const value = data[index]?.value ?? 0;
+              const dot = dotColors?.[index];
+              const selected = active === index;
+              return (
+                <Circle
+                  key={`${data[index]?.label ?? index}-dot`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={selected ? 5 : dot ? (value > 0 ? 3.2 : 2.6) : value > 0 ? 3 : 0}
+                  fill={dot ?? color}
+                  stroke={selected ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.35)"}
+                  strokeWidth={selected ? 2 : 3}
+                />
+              );
+            })}
+          </Svg>
+
+          {/* Tap zones: one per data point, so a bar/point is always reachable. */}
+          <View style={StyleSheet.absoluteFill}>
+            <View style={{ flex: 1, flexDirection: "row" }}>
+              {data.map((point, index) => (
+                <Pressable
+                  key={`${point.label}-${index}-tap`}
+                  style={{ flex: 1 }}
+                  onPress={() =>
+                    setActive((current) => (current === index ? null : index))
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`${point.label}: ${fmtNum(point.value)}`}
+                />
+              ))}
+            </View>
+          </View>
+
+          {activePoint ? (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.popover,
+                { left: popoverLeft, top: popoverTop, width: popoverWidth },
+              ]}
+            >
+              <AppText
+                ltr
+                style={{ fontFamily: fonts.black, fontSize: 13, lineHeight: 18 }}
+              >
+                {fmtNum(activeValue)}
+                {unit ? ` ${unit}` : ""}
+              </AppText>
+              <AppText
+                align="center"
+                color={colors.faint}
+                style={{ fontSize: 9, lineHeight: 13 }}
+              >
+                {data[active!]?.label ?? ""}
+              </AppText>
+            </View>
           ) : null}
-
-          {points.map((point, index) => (
-            <Circle
-              key={`${data[index]?.label ?? index}-dot`}
-              cx={point.x}
-              cy={point.y}
-              r={data[index].value > 0 ? 3 : 0}
-              fill={color}
-              stroke="rgba(255,255,255,0.35)"
-              strokeWidth={3}
-            />
-          ))}
-        </Svg>
+        </Animated.View>
       ) : null}
     </View>
   );
@@ -128,59 +206,79 @@ export interface DonutSlice {
   color: string;
 }
 
-/** Donut mirroring the web `SubjectBreakdownChart` (paddingAngle 3, cornerRadius 6). */
+const polar = (cx: number, cy: number, r: number, angle: number) => {
+  const rad = ((angle - 90) * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+};
+
+/** Stroke-only arc between two angles (0° = 12 o'clock, clockwise). */
+function arcPath(cx: number, cy: number, r: number, start: number, end: number) {
+  const from = polar(cx, cy, r, start);
+  const to = polar(cx, cy, r, end);
+  const large = end - start > 180 ? 1 : 0;
+  return `M ${from.x} ${from.y} A ${r} ${r} 0 ${large} 1 ${to.x} ${to.y}`;
+}
+
+/**
+ * Donut mirroring the web `SubjectBreakdownChart`.
+ *
+ * Each slice is a real arc path with a 2px background-coloured gap (no round
+ * caps bleeding into the next slice), and every arc is tappable so the caller
+ * can open a detail sheet.
+ */
 export function Donut({
   slices,
   size = 132,
   thickness = 20,
   centerValue,
   centerLabel,
+  onSlicePress,
 }: {
   slices: DonutSlice[];
   size?: number;
   thickness?: number;
   centerValue: string;
   centerLabel: string;
+  onSlicePress?: (index: number, slice: DonutSlice) => void;
 }) {
   const total = slices.reduce((sum, slice) => sum + slice.value, 0);
-  const radius = (size - thickness) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const gap = slices.length > 1 ? 2.5 : 0;
-  let offset = 0;
+  const radiusValue = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radiusValue;
+  const gapDeg = slices.length > 1 ? (2 / circumference) * 360 : 0;
+  const center = size / 2;
+  let cursor = 0;
 
   return (
     <View style={{ width: size, height: size }}>
       <Svg width={size} height={size}>
         <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
+          cx={center}
+          cy={center}
+          r={radiusValue}
           fill="none"
           stroke="rgba(255,255,255,0.07)"
           strokeWidth={thickness}
         />
         {total > 0
-          ? slices.map((slice) => {
-              const length = (slice.value / total) * circumference;
-              const dash = Math.max(0, length - gap);
-              const element = (
-                <Circle
+          ? slices.map((slice, index) => {
+              const span = (slice.value / total) * 360;
+              const start = cursor + gapDeg / 2;
+              const end = cursor + span - gapDeg / 2;
+              cursor += span;
+              if (end <= start) return null;
+              return (
+                <Path
                   key={slice.label}
-                  cx={size / 2}
-                  cy={size / 2}
-                  r={radius}
-                  fill="none"
+                  d={arcPath(center, center, radiusValue, start, end)}
                   stroke={slice.color}
                   strokeWidth={thickness}
-                  strokeLinecap="round"
-                  strokeDasharray={`${dash} ${circumference - dash}`}
-                  strokeDashoffset={-offset}
-                  origin={`${size / 2}, ${size / 2}`}
-                  rotation={-90}
+                  strokeLinecap="butt"
+                  fill="none"
+                  onPress={
+                    onSlicePress ? () => onSlicePress(index, slice) : undefined
+                  }
                 />
               );
-              offset += length;
-              return element;
             })
           : null}
       </Svg>
@@ -223,5 +321,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.06)",
+  },
+  popover: {
+    position: "absolute",
+    alignItems: "center",
+    gap: 1,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(9,9,11,0.94)",
+    paddingHorizontal: 6,
+    paddingVertical: 5,
   },
 });

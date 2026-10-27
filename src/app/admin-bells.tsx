@@ -27,7 +27,7 @@ import { AppText } from "@/components/ui";
 import { MonoLabel, Panel } from "@/components/webui";
 import { formatClock, timeToMinutes } from "@/lib/bell";
 import { fmtNum } from "@/lib/format";
-import { isStaff } from "@/lib/roles";
+import { isOwner } from "@/lib/roles";
 import { useAuthStore } from "@/store/auth";
 import {
   colors,
@@ -127,12 +127,12 @@ export default function AdminBellsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
-  const staff = isStaff(user);
+  const owner = isOwner(user);
 
   const schedule = useQuery({
     queryKey: qk.schedule,
     queryFn: fetchSchoolSchedule,
-    enabled: staff,
+    enabled: owner,
     staleTime: 0,
   });
 
@@ -231,12 +231,12 @@ export default function AdminBellsScreen() {
     }
   };
 
-  if (!staff) {
+  if (!owner) {
     return (
       <Screen edges={["top"]}>
         <Header
           title="تنظیمات زنگ‌ها"
-          subtitle="// ADMIN"
+          subtitle="// OWNER"
           onBack={() => router.back()}
         />
         <View style={styles.blocked}>
@@ -250,7 +250,7 @@ export default function AdminBellsScreen() {
               color={colors.faint}
               style={{ fontSize: 11.5, lineHeight: 18 }}
             >
-              این صفحه فقط برای ادمین و مالک باز است.
+              این صفحه فقط برای حساب مالک (Owner) باز است.
             </AppText>
           </Panel>
         </View>
