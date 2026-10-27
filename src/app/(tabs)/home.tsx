@@ -29,7 +29,7 @@ import {
   qk,
 } from "@/api/client";
 import type { Assignment, DailyActivity, LeaderboardEntry, Message } from "@/api/types";
-import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
+import { SchoolStatusCard } from "@/components/SchoolStatusCard";
 import { Screen } from "@/components/Screen";
 import { AppText, Avatar } from "@/components/ui";
 import {
@@ -1167,10 +1167,6 @@ export default function DashboardScreen() {
           <WelcomeCard username={user?.username ?? "همکلاسی"} now={now} />
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.duration(180).delay(30)} style={{ marginBottom: 16 }}>
-          <SchoolStatusStrip />
-        </Animated.View>
-
         {overview.isError && !overview.data ? (
           <Panel contentStyle={{ padding: 24 }} style={{ marginBottom: 16 }}>
             <AppText align="center" style={{ fontFamily: fonts.semibold, fontSize: 14 }}>
@@ -1211,6 +1207,12 @@ export default function DashboardScreen() {
             urgent={urgent.length}
             onOpen={() => router.push("/assignments")}
           />
+        </Animated.View>
+
+        {/* «وضعیت کلاس» — live bell / break / before / after, straight below
+            «تکالیف من». Taps through to the full weekly timetable. */}
+        <Animated.View entering={FadeInDown.duration(180).delay(70)} style={{ marginBottom: 16 }}>
+          <SchoolStatusCard onPress={() => router.push("/timetable")} />
         </Animated.View>
 
         <View style={{ gap: 16, marginBottom: 16 }}>
