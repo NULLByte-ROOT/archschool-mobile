@@ -1048,17 +1048,17 @@ export default function AssignmentsScreen() {
     const later: Assignment[] = [];
     const completed: Assignment[] = [];
     for (const item of displayed) {
+      // مهلت گذشته → فقط در صفحهٔ «تکالیف مهلت گذشته» (حتی اگر انجام شده باشد)
+      const due = parseDue(item.due_date);
+      if (due && due.getTime() < now) continue;
       if (item.is_completed_by_me) {
         completed.push(item);
         continue;
       }
-      const due = parseDue(item.due_date);
       if (!due) {
         later.push(item);
         continue;
       }
-      // مهلت گذشته → فقط در صفحهٔ «تکالیف مهلت گذشته»
-      if (due.getTime() <= now) continue;
       if (due.getTime() - now < DAY_MS * 2) {
         urgent.push(item);
       } else {
@@ -1075,14 +1075,18 @@ export default function AssignmentsScreen() {
   const upcoming = useMemo(
     () =>
       [...pending]
-        .filter((item) => Boolean(item.due_date))
+        .filter((item) => {
+          const due = parseDue(item.due_date);
+          // مهلت‌گذشته‌ها فقط در صفحهٔ اختصاصی دیده می‌شوند
+          return Boolean(due) && due!.getTime() >= now;
+        })
         .sort(
           (a, b) =>
             (parseDue(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY) -
             (parseDue(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY)
         )
         .slice(0, 5),
-    [pending]
+    [pending, now]
   );
 
   const create = () => {
