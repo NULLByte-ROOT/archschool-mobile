@@ -83,6 +83,10 @@ function AppShell({ ready }: { ready: boolean }) {
           options={{ animation: "slide_from_left" }}
         />
         <Stack.Screen
+          name="overdue"
+          options={{ animation: "slide_from_left" }}
+        />
+        <Stack.Screen
           name="users"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />

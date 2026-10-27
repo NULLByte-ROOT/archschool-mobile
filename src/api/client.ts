@@ -266,6 +266,15 @@ export function fetchAssignment(id: number): Promise<Assignment> {
   return request<Assignment>(`/assignments/${id}`);
 }
 
+/**
+ * Assignments whose due date has passed — completed ones included. Mirrors the
+ * web `fetchOverdueAssignments`; the API route is registered before
+ * `/assignments/{id}` so "overdue" never hits the integer path parameter.
+ */
+export function fetchOverdueAssignments(): Promise<Assignment[]> {
+  return request<Assignment[]>("/assignments/overdue");
+}
+
 export interface AssignmentInput {
   title: string;
   description?: string;
@@ -640,6 +649,7 @@ export const qk = {
   schedule: ["school-schedule"] as const,
   userStats: (id: number) => ["user-stats", id] as const,
   assignments: ["assignments"] as const,
+  overdue: ["assignments-overdue"] as const,
   assignment: (id: number) => ["assignment", id] as const,
   assignmentTeam: (id: number) => ["assignment-team", id] as const,
   attachments: (id: number) => ["attachments", id] as const,

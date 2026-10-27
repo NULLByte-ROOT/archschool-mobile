@@ -18,6 +18,7 @@ import {
   ApiError,
   deleteAssignment,
   fetchAssignments,
+  fetchOverdueAssignments,
   qk,
   toggleAssignment,
 } from "@/api/client";
@@ -938,6 +939,13 @@ export default function AssignmentsScreen() {
     queryFn: () => fetchAssignments(),
   });
 
+  // شمارندهٔ کارت «مهلت گذشته» از همان منبعی می‌آید که صفحهٔ اختصاصی.
+  const overdueQuery = useQuery({
+    queryKey: qk.overdue,
+    queryFn: fetchOverdueAssignments,
+  });
+  const overdueCount = overdueQuery.data?.length ?? 0;
+
   const toggle = useMutation({
     mutationFn: (id: number) => toggleAssignment(id),
     onMutate: async (id: number) => {
@@ -982,6 +990,7 @@ export default function AssignmentsScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.assignment(updated.id) });
       void queryClient.invalidateQueries({ queryKey: qk.assignmentTeam(updated.id) });
       void queryClient.invalidateQueries({ queryKey: qk.assignments });
+      void queryClient.invalidateQueries({ queryKey: qk.overdue });
     },
   });
 
@@ -989,6 +998,7 @@ export default function AssignmentsScreen() {
     mutationFn: (id: number) => deleteAssignment(id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: qk.assignments });
+      void queryClient.invalidateQueries({ queryKey: qk.overdue });
       void queryClient.invalidateQueries({ queryKey: qk.overview });
       void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
     },
@@ -1034,7 +1044,6 @@ export default function AssignmentsScreen() {
   const pending = all.filter((item) => !item.is_completed_by_me);
 
   const groups = useMemo(() => {
-    const overdue: Assignment[] = [];
     const urgent: Assignment[] = [];
     const later: Assignment[] = [];
     const completed: Assignment[] = [];
@@ -1046,16 +1055,17 @@ export default function AssignmentsScreen() {
       const due = parseDue(item.due_date);
       if (!due) {
         later.push(item);
-      } else if (due.getTime() <= now) {
-        overdue.push(item);
-      } else if (due.getTime() - now < DAY_MS * 2) {
+        continue;
+      }
+      // مهلت گذشته → فقط در صفحهٔ «تکالیف مهلت گذشته»
+      if (due.getTime() <= now) continue;
+      if (due.getTime() - now < DAY_MS * 2) {
         urgent.push(item);
       } else {
         later.push(item);
       }
     }
     return [
-      { key: "overdue", title: "گذشته از مهلت", tone: "red" as Tone, items: overdue },
       { key: "urgent", title: "فوری (کمتر از ۴۸ ساعت)", tone: "red" as Tone, items: urgent },
       { key: "upcoming", title: "پیشِ رو", tone: "yellow" as Tone, items: later },
       { key: "done", title: "انجام‌شده", tone: "none" as Tone, items: completed },
@@ -1374,6 +1384,44 @@ export default function AssignmentsScreen() {
                 </View>
               </View>
             ))}
+
+            {/* تکالیف مهلت گذشته: کارت مستقل به‌جای فهرست درون‌صفحه‌ای */}
+            <Pressable
+              onPress={() => {
+                void Haptics.selectionAsync().catch(() => undefined);
+                router.push("/overdue");
+              }}
+              style={styles.overdueCard}
+              accessibilityRole="button"
+              accessibilityLabel={`تکالیف مهلت گذشته، ${fmtNum(overdueCount)} مورد`}
+            >
+              <Corners />
+              <View style={styles.overdueIcon}>
+                <Ionicons name="alarm-outline" size={20} color={colors.danger} />
+              </View>
+              <View style={{ flex: 1, gap: 3 }}>
+                <View style={styles.overdueTitleRow}>
+                  <AppText style={{ fontFamily: fonts.black, fontSize: 13, lineHeight: 19 }}>
+                    تکالیف مهلت گذشته
+                  </AppText>
+                  <View style={styles.overdueBadge}>
+                    <AppText
+                      ltr
+                      color={colors.danger}
+                      style={{ fontSize: 10, lineHeight: 14, fontVariant: ["tabular-nums"] }}
+                    >
+                      {fmtNum(overdueCount)}
+                    </AppText>
+                  </View>
+                </View>
+                <AppText color={colors.faint} style={{ fontSize: 10.5, lineHeight: 16 }}>
+                  {overdueCount > 0
+                    ? "همهٔ تکالیفی که مهلتشان گذشته — انجام‌شده و انجام‌نشده"
+                    : "هیچ تکلیفی از مهلت نگذشته"}
+                </AppText>
+              </View>
+              <Ionicons name="chevron-back" size={16} color={colors.faint} />
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -1796,6 +1844,42 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   groupRule: { flex: 1, height: 1, backgroundColor: "rgba(255,255,255,0.10)" },
+
+  /* overdue card */
+  overdueCard: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+    overflow: "hidden",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.28)",
+    backgroundColor: "rgba(239,68,68,0.08)",
+    padding: 16,
+  },
+  overdueIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.32)",
+    backgroundColor: "rgba(239,68,68,0.14)",
+  },
+  overdueTitleRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+  },
+  overdueBadge: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.35)",
+    backgroundColor: "rgba(239,68,68,0.14)",
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+  },
 
   /* empty / error */
   emptyBox: {
