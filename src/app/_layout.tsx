@@ -90,6 +90,10 @@ function AppShell({ ready }: { ready: boolean }) {
           name="new-assignment"
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
+        <Stack.Screen
+          name="admin-bells"
+          options={{ presentation: "modal", animation: "slide_from_bottom" }}
+        />
       </Stack>
     </>
   );

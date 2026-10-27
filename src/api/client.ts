@@ -9,6 +9,7 @@ import type {
   PublicUser,
   ReadBatchResult,
   Role,
+  SchoolPeriod,
   SchoolSchedule,
   TeamMember,
   TeamOverview,
@@ -232,6 +233,16 @@ export function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
 
 export function fetchSchoolSchedule(): Promise<SchoolSchedule> {
   return request<SchoolSchedule>("/schedule");
+}
+
+/** Admin/owner only: replace all four bells atomically. */
+export function updateSchoolSchedule(
+  periods: SchoolPeriod[]
+): Promise<SchoolSchedule> {
+  return request<SchoolSchedule>("/schedule", {
+    method: "PUT",
+    body: JSON.stringify({ periods }),
+  });
 }
 
 export function fetchUserStats(userId: number): Promise<LeaderboardEntry> {

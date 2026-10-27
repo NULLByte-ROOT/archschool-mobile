@@ -525,6 +525,30 @@ export default function ProfileScreen() {
           ) : null}
         </Panel>
 
+        {/* admin-only tools */}
+        {staff ? (
+          <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
+            <MonoLabel style={{ marginBottom: 8 }}>// ADMIN</MonoLabel>
+            <Pressable
+              onPress={() => router.push("/admin-bells")}
+              style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
+              accessibilityRole="button"
+              accessibilityLabel="تنظیمات زنگ‌های مدرسه"
+            >
+              <IconTile name="alarm" size={36} iconSize={16} tone={colors.white} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 20 }}>
+                  تنظیمات زنگ‌های مدرسه
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
+                  شروع و پایان چهار زنگ روزانه — روی همهٔ شمارش معکوس‌ها اثر دارد
+                </AppText>
+              </View>
+              <Ionicons name="chevron-back" size={15} color={colors.faint} />
+            </Pressable>
+          </Panel>
+        ) : null}
+
         {/* session */}
         <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
           <MonoLabel style={{ marginBottom: 4 }}>// SESSION</MonoLabel>

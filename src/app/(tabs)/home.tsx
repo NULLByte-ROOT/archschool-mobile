@@ -31,6 +31,7 @@ import {
 import type { Assignment, DailyActivity, LeaderboardEntry, Message } from "@/api/types";
 import { SchoolStatusCard } from "@/components/SchoolStatusCard";
 import { Screen } from "@/components/Screen";
+import { TodayScheduleCard } from "@/components/TodayScheduleCard";
 import { AppText, Avatar } from "@/components/ui";
 import {
   IconTile,
@@ -44,7 +45,6 @@ import {
 import { useNow } from "@/hooks/useNow";
 import { dmRoom } from "@/lib/chat";
 import {
-  DAY_MS,
   fmtNum,
   fmtPercent,
   formatDue,
@@ -53,7 +53,6 @@ import {
   todayLabel,
 } from "@/lib/format";
 import { canChat } from "@/lib/roles";
-import { dayForDate, flattenDay, type TimetableEntry } from "@/lib/timetable";
 import { useAuthStore } from "@/store/auth";
 import {
   colors,
@@ -890,148 +889,6 @@ function TrendPanel({
 }
 
 /* ------------------------------------------------------------------ */
-/* 9. Tomorrow                                                        */
-/* ------------------------------------------------------------------ */
-
-interface TomorrowRow extends TimetableEntry {
-  events: Assignment[];
-  tone: "red" | "yellow" | "none";
-}
-
-function TomorrowPanel({ rows, onOpen }: { rows: TomorrowRow[]; onOpen: () => void }) {
-  const today = new Date();
-  const next = new Date(today.getTime() + DAY_MS);
-  const day = dayForDate(next);
-  const isWeekend = [4, 5].includes(next.getDay());
-  const totalEvents = rows.reduce((sum, row) => sum + row.events.length, 0);
-
-  return (
-    <Panel corners onPress={onOpen} accessibilityLabel="برنامه فردا" contentStyle={st.panelPad}>
-      <View style={st.tomorrowHeader}>
-        <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 12, flexShrink: 1 }}>
-          <IconTile name="calendar-outline" size={40} iconSize={18} tone={colors.white} border={colors.white15} />
-          <View style={{ minWidth: 0, flexShrink: 1 }}>
-            <AppText
-              numberOfLines={1}
-              style={{ fontFamily: fonts.bold, fontSize: 16, lineHeight: 23 }}
-            >
-              {isWeekend ? "فردا تعطیل است" : "فردا چه کلاسی داریم؟"}
-            </AppText>
-            <MonoLabel>
-              {`// NEXT DAY${day ? ` · ${day.name.toUpperCase()}` : ""}`}
-            </MonoLabel>
-          </View>
-        </View>
-        <Kicker text={totalEvents > 0 ? `فردا · ${fmtNum(totalEvents)} رویداد` : "فردا"} dot />
-      </View>
-
-      {!day || rows.length === 0 ? (
-        <View style={st.tomorrowEmpty}>
-          <Ionicons name="moon" size={26} color={colors.faint} />
-          <AppText align="center" color={colors.faint} style={{ fontSize: 14, lineHeight: 22 }}>
-            {isWeekend ? "تعطیلات آخر هفته — کلاسی نداریم" : "روز بعد کلاسی نداریم"}
-          </AppText>
-        </View>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {rows.map((row, index) => {
-            const toneColor =
-              row.tone === "red" ? "#f87171" : row.tone === "yellow" ? "#facc15" : colors.textSoft;
-            const borderColor =
-              row.events.length === 0
-                ? colors.white10
-                : row.tone === "red"
-                  ? "#ef4444"
-                  : row.tone === "yellow"
-                    ? "#eab308"
-                    : colors.white10;
-            const isExam = row.events.some((event) => event.category === "exam");
-            const nearest = row.events[0];
-            return (
-              <View
-                key={`${row.label}-${index}`}
-                style={[st.tomorrowRow, { borderColor }]}
-              >
-                <IconTile
-                  name={isExam ? "school" : "book"}
-                  size={44}
-                  iconSize={18}
-                  tone={colors.white}
-                />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <AppText
-                    numberOfLines={1}
-                    style={{ fontFamily: fonts.bold, fontSize: 14, lineHeight: 20 }}
-                  >
-                    {row.subject?.name ?? "زنگ آزاد"}
-                  </AppText>
-                  <AppText
-                    numberOfLines={1}
-                    color={colors.faint}
-                    style={{ fontSize: 11, lineHeight: 16, marginTop: 2 }}
-                  >
-                    {row.subject?.teacher ?? "—"} · {row.label}
-                  </AppText>
-                  {nearest ? (
-                    <AppText
-                      numberOfLines={1}
-                      color={colors.faint}
-                      style={{ fontSize: 10, lineHeight: 15, marginTop: 2 }}
-                    >
-                      {relativeDue(nearest.due_date, Date.now())}
-                      <AppText color={toneColor}>{"  "}</AppText>
-                    </AppText>
-                  ) : null}
-                </View>
-                {row.events.length > 0 ? (
-                  <View
-                    style={[
-                      st.eventPill,
-                      {
-                        borderColor:
-                          row.tone === "red"
-                            ? "rgba(239,68,68,0.40)"
-                            : row.tone === "yellow"
-                              ? "rgba(234,179,8,0.40)"
-                              : colors.white12,
-                        backgroundColor:
-                          row.tone === "red"
-                            ? "rgba(239,68,68,0.10)"
-                            : row.tone === "yellow"
-                              ? "rgba(234,179,8,0.10)"
-                              : colors.white04,
-                      },
-                    ]}
-                  >
-                    <PulseDot
-                      size={6}
-                      tone={
-                        row.tone === "red" ? "#ef4444" : row.tone === "yellow" ? "#eab308" : colors.white
-                      }
-                      glow={false}
-                    />
-                    <AppText color={toneColor} style={{ fontFamily: fonts.semibold, fontSize: 10, lineHeight: 14 }}>
-                      {isExam ? "امتحان" : "تکلیف"}
-                    </AppText>
-                    <AppText
-                      ltr
-                      color={toneColor}
-                      style={{ fontSize: 10, lineHeight: 14, fontVariant: ["tabular-nums"] }}
-                    >
-                      {fmtNum(row.events.length)}
-                    </AppText>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </Panel>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Screen                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -1120,30 +977,6 @@ export default function DashboardScreen() {
   // The chat badge mirrors the unread socket summary; the dashboard only needs
   // a coarse number, and `chats.data` presence is enough to know we may show it.
   const unread = 0;
-
-  const tomorrowRows = useMemo<TomorrowRow[]>(() => {
-    const day = dayForDate(new Date(Date.now() + DAY_MS));
-    if (!day) return [];
-    return flattenDay(day).map((entry) => {
-      const events = pending
-        .filter((item) => entry.subject && item.subject_id === entry.subject.id)
-        .sort((a, b) => {
-          const da = parseDue(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
-          const db = parseDue(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
-          return da - db;
-        });
-      const nearest = events[0];
-      const due = nearest ? parseDue(nearest.due_date) : null;
-      const tone: TomorrowRow["tone"] = !due
-        ? "none"
-        : due.getTime() < Date.now()
-          ? "red"
-          : due.getTime() - Date.now() < DAY_MS
-            ? "red"
-            : "yellow";
-      return { ...entry, events, tone };
-    });
-  }, [pending]);
 
   return (
     <Screen edges={["top"]}>
@@ -1261,7 +1094,7 @@ export default function DashboardScreen() {
             trend={overview.data?.weekly_trend ?? []}
             onOpen={() => router.push("/leaderboard")}
           />
-          <TomorrowPanel rows={tomorrowRows} onOpen={() => router.push("/timetable")} />
+          <TodayScheduleCard onPress={() => router.push("/timetable")} />
         </View>
       </ScrollView>
     </Screen>
@@ -1570,44 +1403,5 @@ const st = StyleSheet.create({
     borderRadius: 7,
     overflow: "hidden",
     backgroundColor: colors.white06,
-  },
-
-  /* tomorrow */
-  tomorrowHeader: {
-    flexDirection: "row-reverse",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 16,
-  },
-  tomorrowEmpty: {
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: colors.white12,
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-  },
-  tomorrowRow: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: 16,
-    borderWidth: 2,
-    backgroundColor: "rgba(255,255,255,0.02)",
-    padding: 14,
-  },
-  eventPill: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
   },
 });
