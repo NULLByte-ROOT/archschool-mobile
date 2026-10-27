@@ -94,7 +94,7 @@ export function SchoolStatusCard({ onPress }: { onPress?: () => void }) {
     trackLeft = `${state.previousBell.label} → ${state.nextBell.label}`;
   } else if (state.state === "before") {
     const firstSubject = subjectAt(0);
-    title = "مدرسه هنوز شروع نشده";
+    title = "تا شروع مدرسه";
     detail = `شروع ${formatClock(state.firstBell.start)} · ${
       firstSubject?.name ?? state.firstBell.label
     }`;
