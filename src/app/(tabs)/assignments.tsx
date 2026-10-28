@@ -13,21 +13,22 @@ import {
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Line } from "react-native-svg";
 
 import {
   ApiError,
   deleteAssignment,
   fetchAssignments,
   fetchOverdueAssignments,
+  fetchUserStats,
   qk,
   toggleAssignment,
 } from "@/api/client";
-import type { Assignment } from "@/api/types";
+import type { Assignment, LeaderboardEntry } from "@/api/types";
 import { AreaChart, Donut, SegmentedBar } from "@/components/charts";
 import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
 import { Screen } from "@/components/Screen";
 import { SelectSheet, type SelectOption } from "@/components/SelectSheet";
-import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar } from "@/components/ui";
 import {
   Corners,
@@ -37,8 +38,10 @@ import {
   Panel,
   PulseDot,
 } from "@/components/webui";
+import { useBellSchedule } from "@/hooks/useBellSchedule";
 import { useNow } from "@/hooks/useNow";
-import { DAY_MS, formatDue, fmtNum, parseDue, relativeDue } from "@/lib/format";
+import { countdownTone, dueCountdown, type Bell } from "@/lib/bell";
+import { DAY_MS, formatDue, fmtNum, parseDue } from "@/lib/format";
 import { isStaff } from "@/lib/roles";
 import { SUBJECT_LIST, categoryGroup, categoryItemLabel, subjectName } from "@/lib/subjects";
 import { useAuthStore } from "@/store/auth";
@@ -55,8 +58,6 @@ type Status = "all" | "active" | "done";
 type Sort = "newest" | "oldest" | "deadline";
 type ViewMode = "list" | "grid";
 type Tone = "red" | "yellow" | "none";
-
-const HOUR_MS = 3_600_000;
 
 const STATUS_FILTERS: { key: Status; label: string }[] = [
   { key: "all", label: "همه" },
@@ -108,36 +109,14 @@ const SURFACE_BORDER: Record<Tone, string> = {
 /* helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function toneFor(due: string | null, now: number): Tone {
-  const date = parseDue(due);
-  if (!date) return "none";
-  const diff = date.getTime() - now;
-  if (diff < DAY_MS) return "red";
-  if (diff < DAY_MS * 2) return "yellow";
-  return "none";
-}
-
-function shortLeft(due: string | null, now: number): string {
-  const date = parseDue(due);
-  if (!date) return "بدون مهلت";
-  const diff = date.getTime() - now;
-  if (diff <= 0) {
-    const days = Math.max(1, Math.round(-diff / DAY_MS));
-    return -diff < DAY_MS ? "مهلت گذشته" : `${fmtNum(days)} روز گذشته`;
-  }
-  if (diff < HOUR_MS) return `${fmtNum(Math.max(1, Math.round(diff / 60_000)))} دقیقه مانده`;
-  if (diff < DAY_MS) {
-    const hours = Math.floor(diff / HOUR_MS);
-    const minutes = Math.round((diff % HOUR_MS) / 60_000);
-    return minutes
-      ? `${fmtNum(hours)} ساعت و ${fmtNum(minutes)} دقیقه مانده`
-      : `${fmtNum(hours)} ساعت مانده`;
-  }
-  const days = Math.floor(diff / DAY_MS);
-  const hours = Math.round((diff % DAY_MS) / HOUR_MS);
-  return hours
-    ? `${fmtNum(days)} روز و ${fmtNum(hours)} ساعت مانده`
-    : `${fmtNum(days)} روز مانده`;
+/**
+ * «مهلت مؤثر» = شروع زنگی که درسِ تکلیف در روز مهلت دارد؛ همان عددی که روی
+ * کارت و صفحهٔ جزئیات نمایش داده می‌شود. مرتب‌سازی هم بر همین پایه است.
+ */
+function alignedDeadline(item: Assignment, now: number, bells: Bell[]): number {
+  if (!item.due_date) return Number.POSITIVE_INFINITY;
+  const countdown = dueCountdown(item.due_date, now, bells, item.subject_id);
+  return countdown ? countdown.alignedDueMs : Number.POSITIVE_INFINITY;
 }
 
 function CreatedBadge({ name }: { name: string | null }) {
@@ -216,6 +195,7 @@ function AssignmentCard({
   assignment,
   view,
   now,
+  bells,
   canManage,
   busy,
   onOpen,
@@ -226,6 +206,7 @@ function AssignmentCard({
   assignment: Assignment;
   view: ViewMode;
   now: number;
+  bells: Bell[];
   canManage: boolean;
   busy: boolean;
   onOpen: () => void;
@@ -234,23 +215,44 @@ function AssignmentCard({
   onDelete: () => void;
 }) {
   const done = assignment.is_completed_by_me;
-  const tone = done ? "none" : toneFor(assignment.due_date, now);
+  const countdown = done
+    ? null
+    : dueCountdown(assignment.due_date, now, bells, assignment.subject_id);
+  const tone = done ? "none" : countdownTone(countdown);
   const group = categoryGroup(assignment.category);
   const icon: ComponentProps<typeof Ionicons>["name"] =
     assignment.category === "exam" ? "school" : "clipboard";
   const chip = CHIP[tone];
+  const countdownText = done
+    ? "تحویل شده"
+    : countdown
+      ? countdown.overdue || countdown.dayDiff < 0
+        ? countdown.label
+        : countdown.short
+      : "بدون مهلت";
 
-  const countdown = (
+  const countdownBadge = (
     <View style={styles.countdownWrap}>
-      <View style={[styles.chip, { borderColor: chip.border, backgroundColor: chip.bg }]}>
-        <Ionicons name="alarm-outline" size={11} color={chip.text} />
-        <AppText
-          numberOfLines={1}
-          color={chip.text}
-          style={{ fontFamily: fonts.bold, fontSize: 10.5, lineHeight: 15 }}
-        >
-          {done ? "تحویل شده" : shortLeft(assignment.due_date, now)}
-        </AppText>
+      <View style={{ gap: 2, alignItems: "flex-start", minWidth: 0 }}>
+        <View style={[styles.chip, { borderColor: chip.border, backgroundColor: chip.bg }]}>
+          <Ionicons name="alarm-outline" size={11} color={chip.text} />
+          <AppText
+            numberOfLines={1}
+            color={chip.text}
+            style={{ fontFamily: fonts.bold, fontSize: 10.5, lineHeight: 15 }}
+          >
+            {countdownText}
+          </AppText>
+        </View>
+        {!done && countdown?.periodNote ? (
+          <AppText
+            numberOfLines={1}
+            color={colors.faint}
+            style={{ fontSize: 9, lineHeight: 13, paddingHorizontal: 4 }}
+          >
+            {countdown.periodNote}
+          </AppText>
+        ) : null}
       </View>
     </View>
   );
@@ -308,7 +310,7 @@ function AssignmentCard({
               ) : null}
             </AppText>
           </View>
-          {countdown}
+          {countdownBadge}
         </View>
 
         <AppText
@@ -441,7 +443,7 @@ function AssignmentCard({
       </View>
 
       <View style={styles.listFooter}>
-        {countdown}
+        {countdownBadge}
         <CompletedStack users={assignment.completed_by_users} />
         <ToggleButton assignment={assignment} busy={busy} onPress={onToggle} />
         {editButton}
@@ -591,6 +593,43 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
     ? Math.round((active.completed / active.value) * 100)
     : 0;
 
+  // مختصات لمس‌شده از هندسهٔ دونات حساب می‌شود تا کال‌اوت دقیقاً کنار همان
+  // برش ظاهر شود و یک خط رابط از لبهٔ حلقه به کارت وصل شود.
+  const [donutOffset, setDonutOffset] = useState({ x: 0, y: 0 });
+  const activeAngle = useMemo(() => {
+    if (selected === null) return null;
+    const totalValue = slices.reduce((sum, slice) => sum + slice.value, 0);
+    if (totalValue <= 0) return null;
+    let before = 0;
+    for (let index = 0; index < selected; index += 1) {
+      before += slices[index]?.value ?? 0;
+    }
+    return ((before + (slices[selected]?.value ?? 0) / 2) / totalValue) * 360;
+  }, [selected, slices]);
+
+  const rad = ((activeAngle ?? 0) * Math.PI) / 180;
+  const ringPoint = {
+    x: donutOffset.x + DONUT_SIZE / 2 + DONUT_RING * Math.sin(rad),
+    y: donutOffset.y + DONUT_SIZE / 2 - DONUT_RING * Math.cos(rad),
+  };
+  const calloutTop =
+    donutOffset.y +
+    Math.max(
+      0,
+      Math.min(
+        DONUT_SIZE - CALLOUT_HEIGHT,
+        DONUT_SIZE / 2 - DONUT_RING * Math.cos(rad) - CALLOUT_HEIGHT / 2
+      )
+    );
+  const calloutLeft = Math.max(
+    0,
+    donutOffset.x - CALLOUT_GAP - CALLOUT_WIDTH
+  );
+  const anchorPoint = {
+    x: calloutLeft + CALLOUT_WIDTH,
+    y: calloutTop + CALLOUT_HEIGHT / 2,
+  };
+
   return (
     <Panel corners contentStyle={styles.panelPad} style={{ marginBottom: 16 }}>
       <PanelTitle label="// SUBJECTS" title="توزیع بر اساس درس" icon="book-outline" accessory={
@@ -610,16 +649,24 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
         </View>
       ) : (
         <View style={styles.subjectsRow}>
-          <View style={{ width: 132, height: 132, alignItems: "center", justifyContent: "center" }}>
+          <View
+            style={{ width: DONUT_SIZE, height: DONUT_SIZE, alignItems: "center", justifyContent: "center" }}
+            onLayout={(event) => {
+              const { x, y } = event.nativeEvent.layout;
+              setDonutOffset((current) =>
+                current.x === x && current.y === y ? current : { x, y }
+              );
+            }}
+          >
             <Donut
               slices={slices}
-              size={132}
-              thickness={20}
+              size={DONUT_SIZE}
+              thickness={DONUT_THICKNESS}
               centerValue={fmtNum(total)}
               centerLabel="کل تکلیف"
               onSlicePress={(index) => {
                 void Haptics.selectionAsync().catch(() => undefined);
-                setSelected(index);
+                setSelected((current) => (current === index ? null : index));
               }}
             />
             <View style={styles.donutCenter} pointerEvents="none">
@@ -636,7 +683,10 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
             {slices.map((slice, index) => (
               <Pressable
                 key={slice.label}
-                onPress={() => setSelected(index)}
+                onPress={() => {
+                  void Haptics.selectionAsync().catch(() => undefined);
+                  setSelected((current) => (current === index ? null : index));
+                }}
                 style={({ pressed }) => [styles.legendRow, pressed && { opacity: 0.7 }]}
                 accessibilityRole="button"
                 accessibilityLabel={`جزئیات ${slice.label}`}
@@ -651,76 +701,94 @@ function SubjectsPanel({ items }: { items: Assignment[] }) {
               </Pressable>
             ))}
           </View>
+
+          {active ? (
+            <>
+              {/* لمس هر جای دیگر (یا برش دیگر) کال‌اوت را می‌بندد. */}
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => setSelected(null)}
+                accessibilityLabel="بستن جزئیات درس"
+              />
+              <Svg
+                pointerEvents="none"
+                width="100%"
+                height="100%"
+                style={StyleSheet.absoluteFill}
+              >
+                <Line
+                  x1={ringPoint.x}
+                  y1={ringPoint.y}
+                  x2={anchorPoint.x}
+                  y2={anchorPoint.y}
+                  stroke="rgba(255,255,255,0.38)"
+                  strokeWidth={1}
+                />
+              </Svg>
+              <Animated.View
+                entering={FadeIn.duration(150)}
+                style={[styles.donutCallout, { left: calloutLeft, top: calloutTop }]}
+              >
+                <View style={styles.donutCalloutHead}>
+                  <View style={[styles.legendDot, { backgroundColor: active.color }]} />
+                  <AppText
+                    numberOfLines={1}
+                    style={{ fontFamily: fonts.bold, fontSize: 10.5, lineHeight: 15, flex: 1 }}
+                  >
+                    {active.label}
+                  </AppText>
+                </View>
+                <View style={styles.donutCalloutStats}>
+                  <AppText ltr style={{ fontFamily: fonts.black, fontSize: 13, lineHeight: 18 }}>
+                    {fmtNum(active.value)}
+                  </AppText>
+                  <AppText color={colors.faint} style={{ fontSize: 9, lineHeight: 13 }}>
+                    تکلیف
+                  </AppText>
+                  <View style={{ flex: 1 }} />
+                  <AppText ltr color={colors.textSoft} style={{ fontFamily: fonts.bold, fontSize: 10, lineHeight: 14 }}>
+                    {`${fmtNum(active.completed)} انجام‌شده · ${fmtNum(activePercent)}%`}
+                  </AppText>
+                </View>
+                <View style={styles.subjectSheetTrack}>
+                  <View
+                    style={[
+                      styles.subjectSheetFill,
+                      { width: `${activePercent}%`, backgroundColor: active.color },
+                    ]}
+                  />
+                </View>
+              </Animated.View>
+            </>
+          ) : null}
         </View>
       )}
-
-      <Sheet
-        visible={active !== null}
-        onClose={() => setSelected(null)}
-        title={active?.label ?? ""}
-        subtitle="جزئیات درس"
-        scroll={false}
-      >
-        {active ? (
-          <View style={{ gap: 12 }}>
-            <View style={styles.subjectSheetHead}>
-              <View style={[styles.subjectSheetDot, { backgroundColor: active.color }]} />
-              <AppText style={{ fontFamily: fonts.bold, fontSize: 14, lineHeight: 21, flex: 1 }}>
-                {active.label}
-              </AppText>
-            </View>
-            <View style={styles.subjectSheetGrid}>
-              <View style={styles.subjectSheetCell}>
-                <AppText ltr style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 24 }}>
-                  {fmtNum(active.value)}
-                </AppText>
-                <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
-                  تکلیف
-                </AppText>
-              </View>
-              <View style={styles.subjectSheetCell}>
-                <AppText ltr style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 24 }}>
-                  {fmtNum(active.completed)}
-                </AppText>
-                <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
-                  انجام‌شده
-                </AppText>
-              </View>
-              <View style={styles.subjectSheetCell}>
-                <AppText ltr style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 24 }}>
-                  {`${fmtNum(activePercent)}%`}
-                </AppText>
-                <AppText color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
-                  درصد تکمیل
-                </AppText>
-              </View>
-            </View>
-            <View style={styles.subjectSheetTrack}>
-              <View
-                style={[
-                  styles.subjectSheetFill,
-                  { width: `${activePercent}%`, backgroundColor: active.color },
-                ]}
-              />
-            </View>
-          </View>
-        ) : null}
-      </Sheet>
     </Panel>
   );
 }
 
+const DONUT_SIZE = 132;
+const DONUT_THICKNESS = 20;
+const DONUT_RING = (DONUT_SIZE - DONUT_THICKNESS) / 2;
+const CALLOUT_WIDTH = 118;
+const CALLOUT_HEIGHT = 74;
+const CALLOUT_GAP = 8;
+
 function ActivityPanel({
   completed,
   total,
+  percentage,
   onPress,
 }: {
   completed: number;
   total: number;
+  /** Server value from `compute_user_stats` (completion ratio + upload bonus). */
+  percentage?: number;
   onPress: () => void;
 }) {
   const pending = Math.max(0, total - completed);
-  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const rawPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const pct = Math.round(Math.max(0, Math.min(100, percentage ?? rawPct)));
 
   return (
     <Panel corners onPress={onPress} contentStyle={styles.panelPad} style={{ marginBottom: 16 }} accessibilityLabel="وضعیت تکالیف">
@@ -736,12 +804,7 @@ function ActivityPanel({
           </AppText>
         </View>
         <View style={styles.activityTrack}>
-          <View
-            style={[
-              styles.activityFill,
-              { width: `${total > 0 ? (completed / total) * 100 : 0}%` },
-            ]}
-          />
+          <View style={[styles.activityFill, { width: `${pct}%` }]} />
         </View>
         <View style={styles.activityLegend}>
           <View style={styles.legendRow}>
@@ -840,10 +903,12 @@ function TypesPanel({ items }: { items: Assignment[] }) {
 function DeadlinesPanel({
   items,
   now,
+  bells,
   onOpen,
 }: {
   items: Assignment[];
   now: number;
+  bells: Bell[];
   onOpen: (id: number) => void;
 }) {
   return (
@@ -859,7 +924,8 @@ function DeadlinesPanel({
       ) : (
         <View style={{ gap: 6 }}>
           {items.map((item) => {
-            const tone = toneFor(item.due_date, now);
+            const countdown = dueCountdown(item.due_date, now, bells, item.subject_id);
+            const tone = countdownTone(countdown);
             return (
               <Pressable
                 key={item.id}
@@ -889,7 +955,11 @@ function DeadlinesPanel({
                   color={tone === "red" ? colors.danger : tone === "yellow" ? colors.dueYellowText : colors.textSoft}
                   style={{ fontFamily: fonts.semibold, fontSize: 10, lineHeight: 15, flexShrink: 0, maxWidth: 110 }}
                 >
-                  {shortLeft(item.due_date, now)}
+                  {countdown
+                    ? countdown.overdue
+                      ? "گذشته"
+                      : countdown.short
+                    : "بدون مهلت"}
                 </AppText>
               </Pressable>
             );
@@ -910,6 +980,7 @@ export default function AssignmentsScreen() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const now = useNow(30_000);
+  const { bells } = useBellSchedule();
   const staff = isStaff(user);
 
   const [filter, setFilter] = useState<Status>("all");
@@ -938,6 +1009,15 @@ export default function AssignmentsScreen() {
     queryKey: qk.assignments,
     queryFn: () => fetchAssignments(),
   });
+
+  // آمار شخصی از همان تابع بک‌اندی می‌آید که لیدر بورد و پروفایل استفاده می‌کنند؛
+  // دیگر هیچ درصدی روی کلاینت حساب نمی‌شود.
+  const statsQuery = useQuery({
+    queryKey: qk.userStats(user?.id ?? 0),
+    queryFn: () => fetchUserStats(user?.id ?? 0),
+    enabled: Boolean(user?.id),
+  });
+  const meStats: LeaderboardEntry | undefined = statsQuery.data;
 
   // شمارندهٔ کارت «مهلت گذشته» از همان منبعی می‌آید که صفحهٔ اختصاصی.
   const overdueQuery = useQuery({
@@ -1001,6 +1081,7 @@ export default function AssignmentsScreen() {
       void queryClient.invalidateQueries({ queryKey: qk.overdue });
       void queryClient.invalidateQueries({ queryKey: qk.overview });
       void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+      void queryClient.invalidateQueries({ queryKey: qk.userStats(user?.id ?? 0) });
     },
     onError: (error) => {
       showToast(error instanceof ApiError && error.message ? error.message : "حذف تکلیف انجام نشد.");
@@ -1022,24 +1103,27 @@ export default function AssignmentsScreen() {
 
   const displayed = useMemo(() => {
     const list = [...filtered];
-    const deadline = (item: Assignment) =>
-      parseDue(item.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
     if (sort === "deadline") {
-      list.sort(
+      const keyed = list.map((item) => ({
+        item,
+        key: alignedDeadline(item, now, bells),
+      }));
+      keyed.sort(
         (a, b) =>
-          deadline(a) - deadline(b) ||
-          (parseDue(b.created_at)?.getTime() ?? 0) - (parseDue(a.created_at)?.getTime() ?? 0)
+          a.key - b.key ||
+          (parseDue(b.item.created_at)?.getTime() ?? 0) -
+            (parseDue(a.item.created_at)?.getTime() ?? 0)
       );
-    } else {
-      const direction = sort === "oldest" ? 1 : -1;
-      list.sort(
-        (a, b) =>
-          direction *
-          ((parseDue(a.created_at)?.getTime() ?? 0) - (parseDue(b.created_at)?.getTime() ?? 0))
-      );
+      return keyed.map((entry) => entry.item);
     }
+    const direction = sort === "oldest" ? 1 : -1;
+    list.sort(
+      (a, b) =>
+        direction *
+        ((parseDue(a.created_at)?.getTime() ?? 0) - (parseDue(b.created_at)?.getTime() ?? 0))
+    );
     return list;
-  }, [filtered, sort]);
+  }, [filtered, sort, now, bells]);
 
   const pending = all.filter((item) => !item.is_completed_by_me);
 
@@ -1059,7 +1143,10 @@ export default function AssignmentsScreen() {
         later.push(item);
         continue;
       }
-      if (due.getTime() - now < DAY_MS * 2) {
+      const countdown = dueCountdown(item.due_date, now, bells, item.subject_id);
+      if (!countdown) {
+        later.push(item);
+      } else if (countdown.urgent || countdown.overdue) {
         urgent.push(item);
       } else {
         later.push(item);
@@ -1070,7 +1157,7 @@ export default function AssignmentsScreen() {
       { key: "upcoming", title: "پیشِ رو", tone: "yellow" as Tone, items: later },
       { key: "done", title: "انجام‌شده", tone: "none" as Tone, items: completed },
     ].filter((group) => group.items.length > 0);
-  }, [displayed, now]);
+  }, [displayed, now, bells]);
 
   const upcoming = useMemo(
     () =>
@@ -1080,13 +1167,9 @@ export default function AssignmentsScreen() {
           // مهلت‌گذشته‌ها فقط در صفحهٔ اختصاصی دیده می‌شوند
           return Boolean(due) && due!.getTime() >= now;
         })
-        .sort(
-          (a, b) =>
-            (parseDue(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY) -
-            (parseDue(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY)
-        )
+        .sort((a, b) => alignedDeadline(a, now, bells) - alignedDeadline(b, now, bells))
         .slice(0, 5),
-    [pending, now]
+    [pending, now, bells]
   );
 
   const create = () => {
@@ -1171,14 +1254,16 @@ export default function AssignmentsScreen() {
           <WorkloadPanel items={all} now={now} />
           <SubjectsPanel items={all} />
           <ActivityPanel
-            completed={completedCount}
-            total={all.length}
+            completed={meStats?.completed_count ?? completedCount}
+            total={meStats?.total_assignments ?? all.length}
+            percentage={meStats?.completion_percentage}
             onPress={() => setFilter("all")}
           />
           <TypesPanel items={all} />
           <DeadlinesPanel
             items={upcoming}
             now={now}
+            bells={bells}
             onOpen={(id) => router.push({ pathname: "/assignment/[id]", params: { id: String(id) } })}
           />
         </Animated.View>
@@ -1366,6 +1451,7 @@ export default function AssignmentsScreen() {
                         assignment={item}
                         view={view}
                         now={now}
+                        bells={bells}
                         canManage={staff}
                         busy={toggle.isPending && toggle.variables === item.id}
                         onOpen={() =>
@@ -1552,34 +1638,31 @@ const styles = StyleSheet.create({
   },
   legendDot: { width: 9, height: 9, borderRadius: 5 },
 
-  subjectSheetHead: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 9,
+  donutCallout: {
+    position: "absolute",
+    width: CALLOUT_WIDTH,
+    height: CALLOUT_HEIGHT,
+    justifyContent: "center",
+    gap: 5,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.white03,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: colors.white18,
+    backgroundColor: "rgba(9,9,14,0.97)",
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    zIndex: 3,
   },
-  subjectSheetDot: { width: 12, height: 12, borderRadius: 6 },
-  subjectSheetGrid: {
+  donutCalloutHead: {
     flexDirection: "row-reverse",
-    gap: 8,
-  },
-  subjectSheetCell: {
-    flex: 1,
-    minWidth: 0,
     alignItems: "center",
-    gap: 2,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.white03,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    gap: 6,
   },
+  donutCalloutStats: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 5,
+  },
+
   subjectSheetTrack: {
     height: 8,
     borderRadius: 4,

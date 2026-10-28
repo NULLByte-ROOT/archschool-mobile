@@ -48,6 +48,7 @@ import { GlassSurface, StatusDot } from "@/components/chatkit";
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar, Divider } from "@/components/ui";
+import { ImageViewer, type ViewerImage } from "@/components/ImageViewer";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { useRoomSocket, type RoomSocketEvent } from "@/hooks/useRoomSocket";
 import { dmRoom, parseRoom } from "@/lib/chat";
@@ -508,7 +509,7 @@ export default function ChatRoomScreen() {
   const [editTarget, setEditTarget] = useState<Message | null>(null);
   const [editText, setEditText] = useState("");
   const [editSaving, setEditSaving] = useState(false);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
   const window = useWindowDimensions();
@@ -967,6 +968,23 @@ export default function ChatRoomScreen() {
   const canSend = Boolean(input.trim() || pendingImage) && !sending;
   const data = useMemo(() => [...messages].reverse(), [messages]);
 
+  // گالری همهٔ تصاویر همین گفتگو؛ ترتیب از قدیمی به جدید است.
+  const viewerImages = useMemo<ViewerImage[]>(
+    () =>
+      messages
+        .filter((message) => Boolean(message.file_url))
+        .map((message) => ({
+          src: resolveMediaUrl(message.file_url as string),
+          alt: message.sender_username ?? "تصویر گفتگو",
+        })),
+    [messages]
+  );
+
+  const openImage = (url: string) => {
+    const found = viewerImages.findIndex((entry) => entry.src === url);
+    setViewerIndex(found >= 0 ? found : 0);
+  };
+
   /* ---- inline long-press menu (Telegram's small anchored card) ---- */
   const MENU_WIDTH = 190;
   const MENU_ROW = 44;
@@ -1061,7 +1079,7 @@ export default function ChatRoomScreen() {
         showAuthor={showAuthor}
         showDate={showDate}
         onLongPress={(point) => setMenuAnchor({ message: item, ...point })}
-        onImagePress={setViewerUrl}
+        onImagePress={openImage}
         onReply={() => startReply(item)}
         onProfile={setProfileId}
         onSeenInfo={setInfoMessage}
@@ -1506,30 +1524,12 @@ export default function ChatRoomScreen() {
         </View>
       </Sheet>
 
-      <Modal
-        visible={viewerUrl !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setViewerUrl(null)}
-      >
-        <View style={styles.viewer}>
-          <Pressable
-            onPress={() => setViewerUrl(null)}
-            style={[styles.viewerClose, { top: insets.top + 12 }]}
-            hitSlop={10}
-          >
-            <Ionicons name="close" size={22} color={colors.white} />
-          </Pressable>
-          {viewerUrl ? (
-            <Image
-              source={{ uri: viewerUrl }}
-              style={{ width: "100%", height: "100%" }}
-              contentFit="contain"
-            />
-          ) : null}
-        </View>
-      </Modal>
+      <ImageViewer
+        visible={viewerIndex !== null}
+        images={viewerImages}
+        index={viewerIndex ?? 0}
+        onClose={() => setViewerIndex(null)}
+      />
     </Screen>
   );
 }
@@ -1880,22 +1880,5 @@ const styles = StyleSheet.create({
   },
   editSave: {
     backgroundColor: colors.amber,
-  },
-  viewer: {
-    flex: 1,
-    backgroundColor: "#000000",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  viewerClose: {
-    position: "absolute",
-    left: 16,
-    zIndex: 2,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
   },
 });

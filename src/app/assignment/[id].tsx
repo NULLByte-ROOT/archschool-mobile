@@ -10,7 +10,6 @@ import {
   Alert,
   KeyboardAvoidingView,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -49,26 +48,23 @@ import {
   SolidCard,
 } from "@/components/cards";
 import { Header } from "@/components/Header";
+import { ImageViewer, type ViewerImage } from "@/components/ImageViewer";
 import { ProgressBar } from "@/components/ProgressBar";
 import { Screen } from "@/components/Screen";
 import { Sheet } from "@/components/Sheet";
 import { AppText, Avatar, Pill } from "@/components/ui";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { useRoomSocket, type RoomSocketEvent } from "@/hooks/useRoomSocket";
+import { useBellSchedule } from "@/hooks/useBellSchedule";
 import { useNow } from "@/hooks/useNow";
-import {
-  dueColor,
-  dueTone,
-  faDate,
-  formatDue,
-  fmtNum,
-  fmtPercent,
-  relativeDue,
-} from "@/lib/format";
+import { countdownTone, dueCountdown } from "@/lib/bell";
+import { faDate, formatDue, fmtNum, fmtPercent } from "@/lib/format";
 import { isStaff } from "@/lib/roles";
 import { categoryItemLabel, subjectName, SUBJECT_BY_ID } from "@/lib/subjects";
 import { useAuthStore } from "@/store/auth";
 import { colors, fonts, radius, screenGutter, spacing } from "@/theme/tokens";
+
+const IMAGE_FILE_RE = /\.(png|jpe?g|webp|gif|heic|heif)(\?|$)/i;
 
 function mergeMessages(current: Message[], incoming: Message[]): Message[] {
   const map = new Map<number, Message>();
@@ -176,7 +172,7 @@ function AttachmentTile({
   onImage: (url: string) => void;
   onDelete?: () => void;
 }) {
-  const isImage = /\.(png|jpe?g|webp|gif|heic|heif)(\?|$)/i.test(attachment.file_url);
+  const isImage = IMAGE_FILE_RE.test(attachment.file_url);
   const url = resolveMediaUrl(attachment.file_url);
 
   if (isImage) {
@@ -245,11 +241,12 @@ export default function AssignmentDetailScreen() {
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
   const now = useNow();
+  const { bells } = useBellSchedule();
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [comments, setComments] = useState<Message[]>([]);
   const [commentInput, setCommentInput] = useState("");
   const [commentImage, setCommentImage] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -407,6 +404,8 @@ export default function AssignmentDetailScreen() {
               await deleteAssignment(id);
               await queryClient.invalidateQueries({ queryKey: qk.assignments });
               void queryClient.invalidateQueries({ queryKey: qk.overview });
+              void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+              void queryClient.invalidateQueries({ queryKey: qk.userStats(user?.id ?? 0) });
               void queryClient.invalidateQueries({ queryKey: qk.recentComments });
               router.back();
             } catch (error) {
@@ -453,6 +452,10 @@ export default function AssignmentDetailScreen() {
         size: asset.fileSize,
       });
       await queryClient.invalidateQueries({ queryKey: qk.attachments(id) });
+      // Every uploaded file adds +5% to this user's server-side percentage.
+      void queryClient.invalidateQueries({ queryKey: qk.userStats(user?.id ?? 0) });
+      void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+      void queryClient.invalidateQueries({ queryKey: qk.overview });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => undefined
       );
@@ -478,6 +481,9 @@ export default function AssignmentDetailScreen() {
             try {
               await deleteAttachment(attachment.id);
               await queryClient.invalidateQueries({ queryKey: qk.attachments(id) });
+              void queryClient.invalidateQueries({ queryKey: qk.userStats(user?.id ?? 0) });
+              void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+              void queryClient.invalidateQueries({ queryKey: qk.overview });
             } catch (error) {
               Alert.alert(
                 "خطا",
@@ -561,7 +567,40 @@ export default function AssignmentDetailScreen() {
   const staff = isStaff(user);
   const canSend = Boolean(commentInput.trim() || commentImage) && !sendingComment;
 
-  const dueToneValue = assignment ? dueTone(assignment.due_date, now) : "none";
+  const dueCountdownValue = dueCountdown(
+    assignment?.due_date ?? null,
+    now,
+    bells,
+    assignment?.subject_id
+  );
+  const dueToneValue = countdownTone(dueCountdownValue);
+  const dueColorValue =
+    dueToneValue === "red"
+      ? colors.red
+      : dueToneValue === "yellow"
+        ? colors.warning
+        : colors.muted;
+
+  // گالری تصاویر همین تکلیف: پیوست‌ها اول، بعد تصاویر کامنت‌ها.
+  const viewerImages: ViewerImage[] = [
+    ...(attachmentsQuery.data ?? [])
+      .filter((attachment) => IMAGE_FILE_RE.test(attachment.file_url))
+      .map((attachment) => ({
+        src: resolveMediaUrl(attachment.file_url),
+        alt: attachment.file_name || "پیوست تکلیف",
+      })),
+    ...comments
+      .filter((message) => message.file_url && IMAGE_FILE_RE.test(message.file_url))
+      .map((message) => ({
+        src: resolveMediaUrl(message.file_url as string),
+        alt: message.sender_username ?? "تصویر کامنت",
+      })),
+  ];
+
+  const openViewer = (url: string) => {
+    const found = viewerImages.findIndex((entry) => entry.src === url);
+    setViewerIndex(found >= 0 ? found : 0);
+  };
 
   if (!validId) {
     return (
@@ -674,8 +713,8 @@ export default function AssignmentDetailScreen() {
                       icon="calendar-outline"
                       label="مهلت"
                       value={formatDue(assignment.due_date)}
-                      sub={relativeDue(assignment.due_date, now)}
-                      tone={dueColor(dueToneValue)}
+                      sub={dueCountdownValue?.label ?? "بدون مهلت"}
+                      tone={dueColorValue}
                     />
                     <InfoChip
                       icon="person-outline"
@@ -701,12 +740,12 @@ export default function AssignmentDetailScreen() {
                       <Ionicons
                         name={isDone ? "checkmark-done-outline" : "time-outline"}
                         size={15}
-                        color={isDone ? colors.teal : dueColor(dueToneValue)}
+                        color={isDone ? colors.teal : dueColorValue}
                       />
                       <AppText variant="caption" color={colors.muted} style={{ flex: 1 }}>
                         {isDone
                           ? "این تکلیف توسط تو تحویل شده است."
-                          : relativeDue(assignment.due_date, now)}
+                          : dueCountdownValue?.label ?? "بدون مهلت"}
                       </AppText>
                       <AppText variant="caption" color={colors.faint}>
                         {formatDue(assignment.due_date)}
@@ -721,13 +760,14 @@ export default function AssignmentDetailScreen() {
                             100 -
                               (Math.max(
                                 0,
-                                (new Date(assignment.due_date).getTime() - now) / 3600000
+                                (dueCountdownValue?.alignedDueMs ?? now) - now
                               ) /
-                                72) *
+                                3600000) /
+                                72 *
                                 100
                           )
                         )}
-                        color={dueColor(dueToneValue)}
+                        color={dueColorValue}
                         height={4}
                       />
                     ) : null}
@@ -848,7 +888,7 @@ export default function AssignmentDetailScreen() {
                         <AttachmentTile
                           key={attachment.id}
                           attachment={attachment}
-                          onImage={setViewerUrl}
+                          onImage={openViewer}
                           onDelete={
                             attachment.user_id === user?.id || staff
                               ? () => removeAttachmentFile(attachment)
@@ -940,7 +980,7 @@ export default function AssignmentDetailScreen() {
                             ) : null}
                           </View>
                           {image ? (
-                            <Pressable onPress={() => setViewerUrl(image)}>
+                            <Pressable onPress={() => openViewer(image)}>
                               <Image
                                 source={{ uri: image }}
                                 style={styles.commentImage}
@@ -1056,30 +1096,12 @@ export default function AssignmentDetailScreen() {
         </Pressable>
       </Sheet>
 
-      <Modal
-        visible={viewerUrl !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setViewerUrl(null)}
-      >
-        <View style={styles.viewer}>
-          <Pressable
-            onPress={() => setViewerUrl(null)}
-            style={[styles.viewerClose, { top: insets.top + 12 }]}
-            hitSlop={10}
-          >
-            <Ionicons name="close" size={22} color={colors.white} />
-          </Pressable>
-          {viewerUrl ? (
-            <Image
-              source={{ uri: viewerUrl }}
-              style={{ width: "100%", height: "100%" }}
-              contentFit="contain"
-            />
-          ) : null}
-        </View>
-      </Modal>
+      <ImageViewer
+        visible={viewerIndex !== null}
+        images={viewerImages}
+        index={viewerIndex ?? 0}
+        onClose={() => setViewerIndex(null)}
+      />
 
       <UserProfileModal userId={profileId} onClose={() => setProfileId(null)} />
     </Screen>
@@ -1405,22 +1427,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.redSoft,
     borderWidth: 1,
     borderColor: "rgba(242,104,107,0.3)",
-  },
-  viewer: {
-    flex: 1,
-    backgroundColor: "#000000",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  viewerClose: {
-    position: "absolute",
-    left: 16,
-    zIndex: 2,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.55)",
   },
 });

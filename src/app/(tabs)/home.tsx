@@ -43,13 +43,14 @@ import {
   PulseDot,
 } from "@/components/webui";
 import { useNow } from "@/hooks/useNow";
+import { useBellSchedule } from "@/hooks/useBellSchedule";
+import { countdownTone, dueCountdown, type Bell } from "@/lib/bell";
 import { dmRoom } from "@/lib/chat";
 import {
   fmtNum,
   fmtPercent,
   formatDue,
   parseDue,
-  relativeDue,
   todayLabel,
 } from "@/lib/format";
 import { canChat } from "@/lib/roles";
@@ -62,8 +63,6 @@ import {
   spacing,
   tabBarReserve,
 } from "@/theme/tokens";
-
-const HOUR_MS = 3_600_000;
 
 /* ------------------------------------------------------------------ */
 /* 1. Welcome card                                                     */
@@ -603,6 +602,7 @@ function FocusPanel({
   doneCount,
   next,
   now,
+  bells,
   onOpen,
   loading,
 }: {
@@ -611,6 +611,7 @@ function FocusPanel({
   doneCount: number;
   next: Assignment[];
   now: number;
+  bells: Bell[];
   onOpen: () => void;
   loading: boolean;
 }) {
@@ -654,21 +655,39 @@ function FocusPanel({
         </View>
       ) : (
         <View style={{ gap: 6 }}>
-          {next.slice(0, 2).map((item) => (
-            <View key={item.id} style={st.focusRow}>
-              <PulseDot size={6} tone={colors.danger} glow={false} />
-              <AppText
-                numberOfLines={1}
-                color={colors.textSoft}
-                style={{ fontFamily: fonts.semibold, fontSize: 11, lineHeight: 16, flex: 1 }}
-              >
-                {item.title}
-              </AppText>
-              <AppText color={colors.faint} style={{ fontSize: 9.5, lineHeight: 14 }}>
-                {relativeDue(item.due_date, now)}
-              </AppText>
-            </View>
-          ))}
+          {next.slice(0, 2).map((item) => {
+            const countdown = dueCountdown(
+              item.due_date,
+              now,
+              bells,
+              item.subject_id
+            );
+            const tone = countdownTone(countdown);
+            return (
+              <View key={item.id} style={st.focusRow}>
+                <PulseDot size={6} tone={colors.danger} glow={false} />
+                <AppText
+                  numberOfLines={1}
+                  color={colors.textSoft}
+                  style={{ fontFamily: fonts.semibold, fontSize: 11, lineHeight: 16, flex: 1 }}
+                >
+                  {item.title}
+                </AppText>
+                <AppText
+                  color={
+                    tone === "red"
+                      ? colors.danger
+                      : tone === "yellow"
+                        ? colors.amber
+                        : colors.faint
+                  }
+                  style={{ fontSize: 9.5, lineHeight: 14 }}
+                >
+                  {countdown?.short ?? "بدون مهلت"}
+                </AppText>
+              </View>
+            );
+          })}
         </View>
       )}
     </Panel>
@@ -937,6 +956,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((state) => state.user);
   const now = useNow();
+  const { bells } = useBellSchedule();
   const member = !canChat(user);
 
   const overview = useQuery({ queryKey: qk.overview, queryFn: fetchOverview });
@@ -964,22 +984,31 @@ export default function DashboardScreen() {
   };
 
   const me = overview.data?.me;
-  const pending = useMemo(
-    () =>
-      (assignments.data ?? [])
-        .filter((item) => !item.is_completed_by_me)
-        .sort((a, b) => {
-          const da = parseDue(a.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
-          const db = parseDue(b.due_date)?.getTime() ?? Number.POSITIVE_INFINITY;
-          return da - db;
-        }),
-    [assignments.data]
-  );
+  const pending = useMemo(() => {
+    const alignedDue = (item: Assignment) =>
+      dueCountdown(item.due_date, now, bells, item.subject_id)?.alignedDueMs ??
+      parseDue(item.due_date)?.getTime() ??
+      Number.POSITIVE_INFINITY;
+    return (assignments.data ?? [])
+      .filter((item) => !item.is_completed_by_me)
+      .map((item) => ({ item, at: alignedDue(item) }))
+      .sort((a, b) => a.at - b.at)
+      .map((entry) => entry.item);
+  }, [assignments.data, now, bells]);
 
-  const urgent = pending.filter((item) => {
-    const due = parseDue(item.due_date);
-    return Boolean(due && due.getTime() - now < 48 * HOUR_MS);
-  });
+  const urgent = useMemo(
+    () =>
+      pending.filter((item) => {
+        const countdown = dueCountdown(
+          item.due_date,
+          now,
+          bells,
+          item.subject_id
+        );
+        return Boolean(countdown && (countdown.urgent || countdown.overdue));
+      }),
+    [pending, now, bells]
+  );
 
   const peerName = (peerId: number): string =>
     team.data?.find((entry) => entry.id === peerId)?.username ?? "همکلاسی";
@@ -1057,7 +1086,7 @@ export default function DashboardScreen() {
               streak={me.current_streak}
               best={me.best_streak}
               teamRecord={overview.data?.team_record_streak ?? 0}
-              atRisk={!me.completed_today}
+              atRisk={me.streak_at_risk}
               onOpen={() => router.push("/leaderboard")}
               onFix={() => router.push("/assignments")}
             />
@@ -1109,6 +1138,7 @@ export default function DashboardScreen() {
             doneCount={me?.completed_count ?? 0}
             next={pending}
             now={now}
+            bells={bells}
             loading={assignments.isLoading}
             onOpen={() => router.push("/assignments")}
           />

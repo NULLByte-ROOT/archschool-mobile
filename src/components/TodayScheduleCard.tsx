@@ -68,6 +68,9 @@ export function TodayScheduleCard({ onPress }: { onPress?: () => void }) {
   const now = useNow(15_000);
   const { bells } = useBellSchedule();
   const state = getCurrentBellState(now, bells);
+  // بعد از پایان آخرین زنگ، کارت «برنامهٔ امروز» کاملاً پنهان می‌شود و
+  // نیمه‌شبِ بعد (وقتی وضعیت به «before» برمی‌گردد) دوباره ظاهر می‌شود.
+  const schoolOver = state.state === "after";
   const target = scheduleTarget(now, schoolEnd(bells));
   const day = target.day;
   const blocks = dayBlocks(day, bells);
@@ -92,6 +95,8 @@ export function TodayScheduleCard({ onPress }: { onPress?: () => void }) {
     : target.isLiteralTomorrow
       ? "فردا"
       : "روز بعد";
+
+  if (schoolOver) return null;
 
   return (
     <Panel

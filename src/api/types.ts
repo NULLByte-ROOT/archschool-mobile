@@ -32,6 +32,8 @@ export interface LeaderboardEntry {
   completion_percentage: number;
   completed_count: number;
   total_assignments: number;
+  /** Uploaded files on live assignments; each adds +5% (capped at 100). */
+  upload_count: number;
   last_completion_time: string | null;
   average_speed_hours: number | null;
   weekly_activity: DailyActivity[];
@@ -40,6 +42,8 @@ export interface LeaderboardEntry {
   current_streak: number;
   best_streak: number;
   completed_today: boolean;
+  /** Server-computed: true only after 12:00 school time with an empty day. */
+  streak_at_risk: boolean;
 }
 
 export interface TeamOverview {
