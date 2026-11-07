@@ -52,6 +52,7 @@ import { ImageViewer, type ViewerImage } from "@/components/ImageViewer";
 import { UserProfileModal } from "@/components/UserProfileModal";
 import { useRoomSocket, type RoomSocketEvent } from "@/hooks/useRoomSocket";
 import { dmRoom, parseRoom } from "@/lib/chat";
+import { downloadImage } from "@/lib/download";
 import {
   calendarDayDiff,
   faDate,
@@ -308,15 +309,30 @@ function MessageBubble({
             ) : null}
 
             {image ? (
-              <Pressable onPress={() => onImagePress(image)}>
-                <Image
-                  source={{ uri: image }}
-                  style={styles.messageImage}
-                  contentFit="cover"
-                  transition={160}
-                  cachePolicy="memory-disk"
-                />
-              </Pressable>
+              <View style={styles.messageImageWrap}>
+                <Pressable onPress={() => onImagePress(image)}>
+                  <Image
+                    source={{ uri: image }}
+                    style={styles.messageImage}
+                    contentFit="cover"
+                    transition={160}
+                    cachePolicy="memory-disk"
+                  />
+                </Pressable>
+                <Pressable
+                  onPress={() => void downloadImage(image)}
+                  hitSlop={8}
+                  style={styles.messageDownload}
+                  accessibilityRole="button"
+                  accessibilityLabel="دانلود تصویر"
+                >
+                  <Ionicons
+                    name="download-outline"
+                    size={15}
+                    color={colors.white}
+                  />
+                </Pressable>
+              </View>
             ) : null}
 
             {message.content.trim() ? (
@@ -1750,6 +1766,20 @@ const styles = StyleSheet.create({
     height: 178,
     borderRadius: radius.sm,
     backgroundColor: colors.inkRaised,
+  },
+  messageImageWrap: { alignSelf: "flex-start" },
+  messageDownload: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.16)",
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   composerNote: {
     flexDirection: "row-reverse",

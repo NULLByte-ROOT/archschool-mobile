@@ -58,6 +58,7 @@ import { useRoomSocket, type RoomSocketEvent } from "@/hooks/useRoomSocket";
 import { useBellSchedule } from "@/hooks/useBellSchedule";
 import { useNow } from "@/hooks/useNow";
 import { countdownTone, dueCountdown } from "@/lib/bell";
+import { downloadImage } from "@/lib/download";
 import { faDate, formatDue, fmtNum, fmtPercent } from "@/lib/format";
 import { isStaff } from "@/lib/roles";
 import { categoryItemLabel, subjectName, SUBJECT_BY_ID } from "@/lib/subjects";
@@ -185,6 +186,15 @@ function AttachmentTile({
           transition={140}
           cachePolicy="memory-disk"
         />
+        <Pressable
+          onPress={() => void downloadImage(url)}
+          hitSlop={8}
+          style={styles.attachmentDownload}
+          accessibilityRole="button"
+          accessibilityLabel="دانلود تصویر"
+        >
+          <Ionicons name="download-outline" size={13} color={colors.white} />
+        </Pressable>
         {onDelete ? (
           <Pressable
             onPress={onDelete}
@@ -1285,6 +1295,19 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     left: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.62)",
+    borderWidth: 1,
+    borderColor: colors.white12,
+  },
+  attachmentDownload: {
+    position: "absolute",
+    top: 6,
+    right: 6,
     width: 24,
     height: 24,
     borderRadius: 12,

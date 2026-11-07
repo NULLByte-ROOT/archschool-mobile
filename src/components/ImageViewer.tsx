@@ -1,11 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import * as FileSystem from "expo-file-system/legacy";
 import * as Haptics from "expo-haptics";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   StyleSheet,
@@ -22,6 +20,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText } from "@/components/ui";
+import { downloadImage } from "@/lib/download";
 import { colors, fonts, radius } from "@/theme/tokens";
 
 /**
@@ -29,8 +28,9 @@ import { colors, fonts, radius } from "@/theme/tokens";
  *
  * - Pinch to zoom (1×–5×), drag to pan while zoomed, double-tap to toggle,
  *   swipe left/right to walk through the gallery when it is not zoomed.
- * - Download writes the file into the app's document directory with the
- *   already-installed `expo-file-system` (no new native module, OTA-safe).
+ * - Download saves into the public Downloads folder the user picks through
+ *   Android's Storage Access Framework (Photos via the iOS share sheet) with
+ *   the already-installed `expo-file-system` — no new native module, OTA-safe.
  * - The caller passes the images of one context (a room, an assignment) and
  *   the index that was tapped, exactly like the web `ImageViewer`.
  */
@@ -175,26 +175,12 @@ export function ImageViewer({
     if (!image || downloading) return;
     setDownloading(true);
     try {
-      const root = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
-      if (!root) throw new Error("no writable directory");
-      const directory = `${root}archschool-images/`;
-      await FileSystem.makeDirectoryAsync(directory, {
-        intermediates: true,
-      }).catch(() => undefined);
-      const extension = /\.([a-z0-9]{2,5})(?:\?|#|$)/i.exec(image.src)?.[1];
-      const target = `${directory}archschool-${Date.now()}.${
-        extension?.toLowerCase() ?? "jpg"
-      }`;
-      const result = await FileSystem.downloadAsync(image.src, target);
-      void Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success
-      ).catch(() => undefined);
-      Alert.alert(
-        "ذخیره شد",
-        `تصویر در حافظهٔ برنامه ذخیره شد:\n${result.uri}`
-      );
-    } catch {
-      Alert.alert("دانلود نشد", "ذخیرهٔ تصویر ممکن نشد.");
+      const saved = await downloadImage(image.src);
+      if (saved) {
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success
+        ).catch(() => undefined);
+      }
     } finally {
       setDownloading(false);
     }
