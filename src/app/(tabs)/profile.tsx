@@ -321,12 +321,15 @@ export default function ProfileScreen() {
     : "—";
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: tabBarReserve + insets.bottom + 28 },
+          {
+            paddingTop: insets.top + spacing.xs,
+            paddingBottom: tabBarReserve + insets.bottom + 28,
+          },
         ]}
       >
         <View style={{ marginBottom: 20 }}>

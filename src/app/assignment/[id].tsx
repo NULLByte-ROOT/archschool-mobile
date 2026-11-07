@@ -614,7 +614,7 @@ export default function AssignmentDetailScreen() {
 
   if (!validId) {
     return (
-      <Screen edges={["top", "bottom"]}>
+      <Screen edges={["top", "bottom"]} underStatusBar>
         <Header title="تکلیف" onBack={() => router.back()} />
         <EmptyState icon="alert-circle-outline" title="شناسهٔ تکلیف نامعتبر است" />
       </Screen>
@@ -622,7 +622,7 @@ export default function AssignmentDetailScreen() {
   }
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <Header
         title="جزئیات تکلیف"
         subtitle={assignment?.course || "تکلیف کلاس"}

@@ -280,7 +280,7 @@ export default function NewAssignmentScreen() {
   }
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior="padding"
@@ -289,7 +289,10 @@ export default function NewAssignmentScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: tabBarReserve + insets.bottom + 96 },
+            {
+              paddingTop: insets.top + spacing.xs,
+              paddingBottom: tabBarReserve + insets.bottom + 96,
+            },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"

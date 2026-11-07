@@ -167,17 +167,21 @@ export default function OverdueScreen() {
     router.push({ pathname: "/assignment/[id]", params: { id: String(id) } });
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: tabBarReserve + insets.bottom + 28 },
+          {
+            paddingTop: insets.top + spacing.xs,
+            paddingBottom: tabBarReserve + insets.bottom + 28,
+          },
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={query.isRefetching}
             onRefresh={() => void query.refetch()}
+            progressViewOffset={insets.top}
             tintColor={colors.danger}
             colors={[colors.danger]}
             progressBackgroundColor={colors.panel}

@@ -410,6 +410,7 @@ function RoomHeader({
   onBack: () => void;
   onMenu?: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const seen = kind === "dm" ? lastSeenLabel(peerLastSeen) : "";
   const online = kind === "dm" ? seen === "آنلاین" : connected;
 
@@ -427,7 +428,7 @@ function RoomHeader({
   return (
     <GlassSurface
       style={styles.roomHeaderGlass}
-      contentStyle={styles.roomHeader}
+      contentStyle={[styles.roomHeader, { paddingTop: insets.top + 8 }]}
       intensity={30}
     >
       <Pressable
@@ -1105,7 +1106,7 @@ export default function ChatRoomScreen() {
 
   if (blocked) {
     return (
-      <Screen edges={["top", "bottom"]}>
+      <Screen edges={["top", "bottom"]} underStatusBar statusVeil={false}>
         <RoomHeader
           kind={parsed.kind}
           title="گفتگو"
@@ -1127,7 +1128,7 @@ export default function ChatRoomScreen() {
   }
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar statusVeil={false}>
       <RoomHeader
         kind={parsed.kind}
         title={title}

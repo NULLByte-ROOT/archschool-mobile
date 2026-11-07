@@ -233,7 +233,7 @@ export default function AdminBellsScreen() {
 
   if (!owner) {
     return (
-      <Screen edges={["top"]}>
+      <Screen edges={["top"]} underStatusBar>
         <Header
           title="تنظیمات زنگ‌ها"
           subtitle="// OWNER"
@@ -259,7 +259,7 @@ export default function AdminBellsScreen() {
   }
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <Header
         title="تنظیمات زنگ‌ها"
         subtitle="// ADMIN · SCHOOL BELLS"

@@ -394,8 +394,8 @@ export default function ChatHubScreen() {
 
   if (member) {
     return (
-      <Screen edges={["top"]} grid={false}>
-        <View style={s.header}>
+      <Screen edges={["top"]} grid={false} underStatusBar>
+        <View style={[s.header, { paddingTop: insets.top + spacing.xs }]}>
           <View style={{ flex: 1, minWidth: 0 }}>
             <AppText style={s.title}>گفتگو</AppText>
             <AppText color={colors.faint} style={s.subtitle}>
@@ -414,11 +414,14 @@ export default function ChatHubScreen() {
   }
 
   return (
-    <Screen edges={["top"]} grid={false}>
+    <Screen edges={["top"]} grid={false} underStatusBar>
       <ScrollView
         contentContainerStyle={[
           s.content,
-          { paddingBottom: tabBarReserve + insets.bottom + 96 },
+          {
+            paddingTop: insets.top + 4,
+            paddingBottom: tabBarReserve + insets.bottom + 96,
+          },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -427,6 +430,7 @@ export default function ChatHubScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refresh}
+            progressViewOffset={insets.top}
             tintColor={colors.white}
             colors={[colors.white]}
             progressBackgroundColor={colors.panel}

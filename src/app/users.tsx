@@ -335,11 +335,14 @@ export default function UsersScreen() {
   };
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: tabBarReserve + insets.bottom + 28 },
+          {
+            paddingTop: insets.top + spacing.xs,
+            paddingBottom: tabBarReserve + insets.bottom + 28,
+          },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -347,6 +350,7 @@ export default function UsersScreen() {
           <RefreshControl
             refreshing={query.isRefetching}
             onRefresh={() => void query.refetch()}
+            progressViewOffset={insets.top}
             tintColor={colors.amber}
             colors={[colors.amber]}
             progressBackgroundColor={colors.panel}

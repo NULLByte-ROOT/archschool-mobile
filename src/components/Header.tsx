@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText } from "@/components/ui";
 import { colors, spacing } from "@/theme/tokens";
@@ -16,8 +17,9 @@ export function Header({
   onBack?: () => void;
   actions?: ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { paddingTop: insets.top + spacing.xs }]}>
       <View style={styles.right}>
         {onBack ? (
           <Pressable

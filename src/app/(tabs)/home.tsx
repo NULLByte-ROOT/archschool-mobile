@@ -1048,17 +1048,21 @@ export default function DashboardScreen() {
   const unread = 0;
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           st.content,
-          { paddingBottom: tabBarReserve + insets.bottom + 28 },
+          {
+            paddingTop: insets.top + spacing.xs,
+            paddingBottom: tabBarReserve + insets.bottom + 28,
+          },
         ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={refresh}
+            progressViewOffset={insets.top}
             tintColor={colors.amber}
             colors={[colors.amber]}
             progressBackgroundColor={colors.panel}

@@ -428,11 +428,14 @@ export default function TimetableScreen() {
   const today = DAY_NAMES[shadow.getDay() === 6 ? 0 : (shadow.getDay() + 1) % 7];
 
   return (
-    <Screen edges={["top"]}>
+    <Screen edges={["top"]} underStatusBar>
       <ScrollView
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: Math.max(tabBarReserve, 40) + insets.bottom + 24 },
+          {
+            paddingTop: insets.top + spacing.xs,
+            paddingBottom: Math.max(tabBarReserve, 40) + insets.bottom + 24,
+          },
         ]}
         showsVerticalScrollIndicator={false}
       >

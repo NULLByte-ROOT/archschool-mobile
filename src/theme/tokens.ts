@@ -167,9 +167,9 @@ export const spacing = {
 export const screenGutter = 16;
 
 /** Floating glass tab bar geometry (content must reserve this much space). */
-export const tabBarHeight = 62;
-export const tabBarMargin = 16;
-export const tabBarFloatOffset = 10;
+export const tabBarHeight = 76;
+export const tabBarMargin = 14;
+export const tabBarFloatOffset = 8;
 /** Total space a scrolling screen must leave at the bottom. */
 export const tabBarReserve = tabBarHeight + tabBarMargin;
 
