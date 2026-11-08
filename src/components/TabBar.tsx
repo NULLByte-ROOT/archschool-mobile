@@ -203,9 +203,13 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     }
   };
 
+  /**
+   * Called only when the pan actually activated (a real horizontal drag).
+   * It owns navigation from that point on, so the tap Pressable must not fire
+   * a second time when the finger lifts.
+   */
   const finishDrag = (index: number) => {
-    // Swallow the tap that the Pressable might emit at the end of a drag.
-    suppressPressUntil.current = Date.now() + 250;
+    suppressPressUntil.current = Date.now() + 180;
     dragLift.value = withTiming(0, { duration: 130 });
     if (index === state.index) {
       lozengeX.value = withSpring(committedX.value, SPRING);
@@ -214,14 +218,20 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     selectTab(index);
   };
 
-  const cancelDrag = () => {
+  /**
+   * The pan failed (a normal tap, or a cancelled touch). A failed gesture fires
+   * `onFinalize(false)` for *every* tap, so this must not touch
+   * `suppressPressUntil` — that was swallowing taps and made the bar need
+   * several presses before it navigated.
+   */
+  const snapBack = () => {
     dragLift.value = withTiming(0, { duration: 130 });
     lozengeX.value = withSpring(committedX.value, SPRING);
-    suppressPressUntil.current = Date.now() + 250;
   };
 
   const drag = Gesture.Pan()
-    .minDistance(4)
+    // Only horizontal intent starts a drag; vertical wobble stays a tap.
+    .activeOffsetX([-12, 12])
     .onStart((event) => {
       dragLift.value = withTiming(1, { duration: 120 });
       if (itemWidth > 0) {
@@ -265,7 +275,7 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     })
     .onFinalize((_event, success) => {
       if (!success) {
-        runOnJS(cancelDrag)();
+        runOnJS(snapBack)();
       }
     });
 
@@ -323,7 +333,6 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
                   badge={route.name === "chat" ? chatBadge : 0}
                   onPress={() => {
                     if (Date.now() < suppressPressUntil.current) return;
-                    if (dragLift.value > 0) return;
                     void Haptics.selectionAsync().catch(() => undefined);
                     const event = emitter.emit({
                       type: "tabPress",
