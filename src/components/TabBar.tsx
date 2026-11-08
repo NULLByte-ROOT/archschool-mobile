@@ -6,10 +6,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 
 import { fetchUnread, qk } from "@/api/client";
@@ -26,9 +29,12 @@ import {
 /**
  * Floating "liquid glass" tab bar (iOS 26 style).
  *
- * A taller floating pill with a heavier blur, a moving glass lozenge behind the
- * selected tab, larger icons and labels. Geometry lives in `theme/tokens.ts` so
- * every screen reserves the same amount of space at the bottom.
+ * A taller floating pill with a heavier blur. The selection is a glass
+ * lozenge that can be dragged left/right across the tabs; releasing snaps it
+ * onto the nearest tab and navigates there.
+ *
+ * Geometry lives in `theme/tokens.ts` so every screen reserves the same amount
+ * of space at the bottom.
  */
 
 const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName }> = {
@@ -41,7 +47,14 @@ const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName
 
 /** Horizontal padding inside the pill; the sliding lozenge lines up with it. */
 const ITEMS_PADDING = 8;
-const LOZENGE_GAP = 10;
+/**
+ * Side gap between the lozenge and an item. It must be generous enough that
+ * the lozenge never touches the pill's rounded ends (that used to clip it into
+ * a corner sliver on the outermost tabs).
+ */
+const LOZENGE_GAP = 16;
+const LOZENGE_TOP = 9;
+const SPRING = { damping: 20, stiffness: 210, mass: 0.9 } as const;
 
 function TabItem({
   routeName,
@@ -139,7 +152,12 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
   const lozengeWidth = Math.max(itemWidth - LOZENGE_GAP, 0);
 
   const lozengeX = useSharedValue(0);
+  const committedX = useSharedValue(0);
+  const dragLift = useSharedValue(0);
+  const tickIndex = useSharedValue(-1);
+  const touchIndex = useSharedValue(-1);
   const measured = useRef(false);
+  const suppressPressUntil = useRef(0);
 
   useEffect(() => {
     if (itemWidth <= 0) return;
@@ -148,21 +166,108 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
       ITEMS_PADDING +
       (count - 1 - state.index) * itemWidth +
       LOZENGE_GAP / 2;
+    committedX.value = target;
     if (!measured.current) {
       lozengeX.value = target;
       measured.current = true;
     } else {
-      lozengeX.value = withSpring(target, {
-        damping: 20,
-        stiffness: 210,
-        mass: 0.9,
-      });
+      lozengeX.value = withSpring(target, SPRING);
     }
-  }, [count, itemWidth, lozengeX, state.index]);
+  }, [count, committedX, itemWidth, lozengeX, state.index]);
 
   const lozengeStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: lozengeX.value }],
+    transform: [
+      { translateX: lozengeX.value },
+      { scale: 1 + dragLift.value * 0.04 },
+    ],
   }));
+
+  const tick = () => {
+    void Haptics.selectionAsync().catch(() => undefined);
+  };
+
+  const selectTab = (index: number) => {
+    const route = state.routes[index];
+    if (!route) return;
+    if (index === state.index) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+      () => undefined
+    );
+    const event = emitter.emit({
+      type: "tabPress",
+      target: route.key,
+      canPreventDefault: true,
+    });
+    if (!event.defaultPrevented) {
+      navigateToTab(route.key);
+    }
+  };
+
+  const finishDrag = (index: number) => {
+    // Swallow the tap that the Pressable might emit at the end of a drag.
+    suppressPressUntil.current = Date.now() + 250;
+    dragLift.value = withTiming(0, { duration: 130 });
+    if (index === state.index) {
+      lozengeX.value = withSpring(committedX.value, SPRING);
+      return;
+    }
+    selectTab(index);
+  };
+
+  const cancelDrag = () => {
+    dragLift.value = withTiming(0, { duration: 130 });
+    lozengeX.value = withSpring(committedX.value, SPRING);
+    suppressPressUntil.current = Date.now() + 250;
+  };
+
+  const drag = Gesture.Pan()
+    .minDistance(4)
+    .onStart((event) => {
+      dragLift.value = withTiming(1, { duration: 120 });
+      if (itemWidth > 0) {
+        const slot = Math.floor((event.x - ITEMS_PADDING) / itemWidth);
+        touchIndex.value =
+          count - 1 - Math.min(count - 1, Math.max(0, slot));
+      }
+      runOnJS(tick)();
+    })
+    .onUpdate((event) => {
+      if (itemWidth <= 0) return;
+      const min = ITEMS_PADDING + LOZENGE_GAP / 2;
+      const max = ITEMS_PADDING + (count - 1) * itemWidth + LOZENGE_GAP / 2;
+      const next = Math.min(
+        max,
+        Math.max(min, committedX.value + event.translationX)
+      );
+      lozengeX.value = next;
+
+      const slot = Math.round((next - min) / itemWidth);
+      const index = count - 1 - Math.min(count - 1, Math.max(0, slot));
+      if (index !== tickIndex.value) {
+        tickIndex.value = index;
+        runOnJS(tick)();
+      }
+    })
+    .onEnd((event) => {
+      if (itemWidth <= 0) return;
+      // A tiny wobble is still a tap on the tab that was pressed.
+      if (
+        Math.abs(event.translationX) < 8 &&
+        Math.abs(event.translationY) < 8
+      ) {
+        runOnJS(finishDrag)(touchIndex.value);
+        return;
+      }
+      const min = ITEMS_PADDING + LOZENGE_GAP / 2;
+      const slot = Math.round((lozengeX.value - min) / itemWidth);
+      const index = count - 1 - Math.min(count - 1, Math.max(0, slot));
+      runOnJS(finishDrag)(index);
+    })
+    .onFinalize((_event, success) => {
+      if (!success) {
+        runOnJS(cancelDrag)();
+      }
+    });
 
   return (
     <View
@@ -188,48 +293,77 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
           style={styles.sheen}
         />
 
-        <View
-          style={styles.items}
-          onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
-        >
-          {lozengeWidth > 0 ? (
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.lozenge, { width: lozengeWidth }, lozengeStyle]}
-            >
-              <LinearGradient
-                colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.05)"]}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={styles.lozengeEdge} />
-            </Animated.View>
-          ) : null}
+        <GestureDetector gesture={drag}>
+          <View
+            style={styles.items}
+            onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
+          >
+            {/* Back layer: the tinted glass body sits behind the icons. */}
+            {lozengeWidth > 0 ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.lozenge, { width: lozengeWidth }, lozengeStyle]}
+              >
+                <LinearGradient
+                  colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.05)"]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+            ) : null}
 
-          {state.routes.map((route, index) => {
-            const focused = state.index === index;
-            return (
-              <TabItem
-                key={route.key}
-                routeName={route.name}
-                focused={focused}
-                badge={route.name === "chat" ? chatBadge : 0}
-                onPress={() => {
-                  void Haptics.selectionAsync().catch(() => undefined);
-                  const event = emitter.emit({
-                    type: "tabPress",
-                    target: route.key,
-                    canPreventDefault: true,
-                  });
-                  if (!focused && !event.defaultPrevented) {
-                    navigateToTab(route.key);
-                  }
-                }}
-              />
-            );
-          })}
-        </View>
+            {state.routes.map((route, index) => {
+              const focused = state.index === index;
+              return (
+                <TabItem
+                  key={route.key}
+                  routeName={route.name}
+                  focused={focused}
+                  badge={route.name === "chat" ? chatBadge : 0}
+                  onPress={() => {
+                    if (Date.now() < suppressPressUntil.current) return;
+                    if (dragLift.value > 0) return;
+                    void Haptics.selectionAsync().catch(() => undefined);
+                    const event = emitter.emit({
+                      type: "tabPress",
+                      target: route.key,
+                      canPreventDefault: true,
+                    });
+                    if (!focused && !event.defaultPrevented) {
+                      navigateToTab(route.key);
+                    }
+                  }}
+                />
+              );
+            })}
+
+            {/* Front layer: specular rim above the icons, so the glass wraps
+                them instead of sitting invisibly behind them. */}
+            {lozengeWidth > 0 ? (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.lozengeRim,
+                  { width: lozengeWidth },
+                  lozengeStyle,
+                ]}
+              >
+                <View style={styles.lozengeEdge} />
+                <LinearGradient
+                  colors={[
+                    "rgba(255,255,255,0.16)",
+                    "rgba(255,255,255,0.02)",
+                    "rgba(255,255,255,0)",
+                  ]}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+              </Animated.View>
+            ) : null}
+          </View>
+        </GestureDetector>
       </View>
     </View>
   );
@@ -275,14 +409,21 @@ const styles = StyleSheet.create({
   },
   lozenge: {
     position: "absolute",
-    top: 7,
-    height: tabBarHeight - 14,
+    top: LOZENGE_TOP,
+    height: tabBarHeight - LOZENGE_TOP * 2,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    boxShadow: "0px 8px 20px -8px rgba(0,0,0,0.65)",
+  },
+  lozengeRim: {
+    position: "absolute",
+    top: LOZENGE_TOP,
+    height: tabBarHeight - LOZENGE_TOP * 2,
     borderRadius: 22,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    boxShadow: "0px 8px 20px -8px rgba(0,0,0,0.65)",
   },
   lozengeEdge: {
     position: "absolute",
