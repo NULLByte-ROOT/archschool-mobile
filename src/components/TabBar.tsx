@@ -8,9 +8,11 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
+  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -29,12 +31,13 @@ import {
 /**
  * Floating "liquid glass" tab bar (iOS 26 style).
  *
- * A taller floating pill with a heavier blur. The selection is a glass
- * lozenge that can be dragged left/right across the tabs; releasing snaps it
- * onto the nearest tab and navigates there.
+ * The selection is a glass bubble that sits *on top* of the bar. It is placed
+ * from the **measured** rect of the selected tab (never from an assumed index
+ * order), so it lines up on both LTR and RTL devices and can never drift
+ * outside the pill.
  *
- * Geometry lives in `theme/tokens.ts` so every screen reserves the same amount
- * of space at the bottom.
+ * Dragging the bubble stretches it like jelly, and releasing snaps it to the
+ * nearest tab and lets it wobble for ~2s.
  */
 
 const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName }> = {
@@ -45,27 +48,28 @@ const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName
   profile: { label: "پروفایل", icon: "person-circle-outline", activeIcon: "person-circle" },
 };
 
-/** Horizontal padding inside the pill; the sliding lozenge lines up with it. */
-const ITEMS_PADDING = 8;
-/**
- * Side gap between the lozenge and an item. It must be generous enough that
- * the lozenge never touches the pill's rounded ends (that used to clip it into
- * a corner sliver on the outermost tabs).
- */
-const LOZENGE_GAP = 16;
-const LOZENGE_TOP = 9;
-const SPRING = { damping: 20, stiffness: 210, mass: 0.9 } as const;
+/** Gap between the bubble and the tab it covers (keeps clear of the pill rim). */
+const LOZENGE_GAP = 14;
+const LOZENGE_TOP = 10;
+const LOZENGE_HEIGHT = tabBarHeight - LOZENGE_TOP * 2;
+
+/** Bouncy spring — the bubble overshoots a little instead of gliding flat. */
+const SPRING = { damping: 13, stiffness: 190, mass: 0.9 } as const;
+
+type Rect = { x: number; width: number };
 
 function TabItem({
   routeName,
   focused,
   badge,
   onPress,
+  onLayout,
 }: {
   routeName: string;
   focused: boolean;
   badge: number;
   onPress: () => void;
+  onLayout: (rect: Rect) => void;
 }) {
   const meta = TABS[routeName] ?? {
     label: routeName,
@@ -100,6 +104,10 @@ function TabItem({
       }}
       onPressOut={() => {
         press.value = withSpring(1, { damping: 16, stiffness: 260 });
+      }}
+      onLayout={(event) => {
+        const { x, width } = event.nativeEvent.layout;
+        onLayout({ x, width });
       }}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
@@ -146,41 +154,90 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
   const chatBadge = data?.total ?? 0;
 
   const count = state.routes.length;
-  const [barWidth, setBarWidth] = useState(0);
-  const itemWidth =
-    count > 0 ? Math.max((barWidth - ITEMS_PADDING * 2) / count, 0) : 0;
-  const lozengeWidth = Math.max(itemWidth - LOZENGE_GAP, 0);
+
+  // Real measured geometry, one entry per tab. `x` is relative to the bar.
+  const [rects, setRects] = useState<(Rect | undefined)[]>([]);
+
+  const itemWidth = rects.find((rect) => rect)?.width ?? 0;
+  const bubbleWidth = Math.max(itemWidth - LOZENGE_GAP, 0);
+
+  // Every tab's bubble position (left edge), in the bar's coordinate space.
+  const targets = rects.map((rect) =>
+    rect ? rect.x + LOZENGE_GAP / 2 : Number.NaN
+  );
+  const centers = rects.map((rect) =>
+    rect ? rect.x + rect.width / 2 : Number.NaN
+  );
+  const ready = rects.filter(Boolean).length === count && bubbleWidth > 0;
+  const targetX = targets[state.index];
+  const minTarget = ready ? Math.min(...(targets as number[])) : 0;
+  const maxTarget = ready ? Math.max(...(targets as number[])) : 0;
 
   const lozengeX = useSharedValue(0);
   const committedX = useSharedValue(0);
   const dragLift = useSharedValue(0);
+  const stretch = useSharedValue(0);
+  const jelly = useSharedValue(0);
   const tickIndex = useSharedValue(-1);
-  const touchIndex = useSharedValue(-1);
+  const touchIndex = useSharedValue(0);
   const measured = useRef(false);
   const suppressPressUntil = useRef(0);
 
-  useEffect(() => {
-    if (itemWidth <= 0) return;
-    // The bar reads right-to-left, so index 0 is the rightmost tab.
-    const target =
-      ITEMS_PADDING +
-      (count - 1 - state.index) * itemWidth +
-      LOZENGE_GAP / 2;
-    committedX.value = target;
-    if (!measured.current) {
-      lozengeX.value = target;
-      measured.current = true;
-    } else {
-      lozengeX.value = withSpring(target, SPRING);
-    }
-  }, [count, committedX, itemWidth, lozengeX, state.index]);
+  const setRect = (index: number, rect: Rect) => {
+    setRects((prev) => {
+      const old = prev[index];
+      if (old && Math.abs(old.x - rect.x) < 0.5 && Math.abs(old.width - rect.width) < 0.5) {
+        return prev;
+      }
+      const next = prev.slice();
+      next[index] = rect;
+      return next;
+    });
+  };
 
-  const lozengeStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: lozengeX.value },
-      { scale: 1 + dragLift.value * 0.04 },
-    ],
-  }));
+  /** A loose, decaying wobble — the "let go and it jiggles" feel. */
+  const startJelly = (strength: number) => {
+    const s = Math.max(0.25, Math.min(1, strength));
+    cancelAnimation(jelly);
+    jelly.value = 0;
+    jelly.value = withSequence(
+      withTiming(1 * s, { duration: 110 }),
+      withTiming(-0.82 * s, { duration: 170 }),
+      withTiming(0.64 * s, { duration: 190 }),
+      withTiming(-0.48 * s, { duration: 230 }),
+      withTiming(0.34 * s, { duration: 270 }),
+      withTiming(-0.22 * s, { duration: 310 }),
+      withTiming(0.12 * s, { duration: 350 }),
+      withTiming(-0.06 * s, { duration: 380 }),
+      withTiming(0, { duration: 430 })
+    );
+  };
+
+  useEffect(() => {
+    if (!ready || !Number.isFinite(targetX)) return;
+    committedX.value = targetX;
+    if (!measured.current) {
+      lozengeX.value = targetX;
+      measured.current = true;
+      return;
+    }
+    lozengeX.value = withSpring(targetX, SPRING);
+    startJelly(0.7);
+    // `startJelly` only touches shared values, so it is safe to omit here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, targetX, lozengeX, committedX]);
+
+  const lozengeStyle = useAnimatedStyle(() => {
+    const lift = dragLift.value;
+    const wobble = jelly.value;
+    return {
+      transform: [
+        { translateX: lozengeX.value + wobble * 2 },
+        { scaleX: 1 + stretch.value + wobble * 0.055 + lift * 0.02 },
+        { scaleY: 1 - stretch.value * 0.55 - wobble * 0.04 },
+      ],
+    };
+  });
 
   const tick = () => {
     void Haptics.selectionAsync().catch(() => undefined);
@@ -204,74 +261,84 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
   };
 
   /**
-   * Called only when the pan actually activated (a real horizontal drag).
-   * It owns navigation from that point on, so the tap Pressable must not fire
-   * a second time when the finger lifts.
+   * Only called when the pan actually activated (a real horizontal drag), so
+   * it owns navigation from that point and the tap Pressable must not fire a
+   * second time when the finger lifts.
    */
-  const finishDrag = (index: number) => {
+  const finishDrag = (index: number, velocityX: number) => {
     suppressPressUntil.current = Date.now() + 180;
-    dragLift.value = withTiming(0, { duration: 130 });
+    dragLift.value = withTiming(0, { duration: 160 });
+    stretch.value = withTiming(0, { duration: 220 });
+    const x = targets[index];
+    if (!Number.isFinite(x)) return;
     if (index === state.index) {
-      lozengeX.value = withSpring(committedX.value, SPRING);
-      return;
+      committedX.value = x;
+      lozengeX.value = withSpring(x, SPRING);
+    } else {
+      selectTab(index);
     }
-    selectTab(index);
+    startJelly(0.55 + Math.min(0.45, Math.abs(velocityX) / 3000));
   };
 
   /**
-   * The pan failed (a normal tap, or a cancelled touch). A failed gesture fires
-   * `onFinalize(false)` for *every* tap, so this must not touch
-   * `suppressPressUntil` — that was swallowing taps and made the bar need
-   * several presses before it navigated.
+   * A failed pan fires `onFinalize(false)` for every normal tap, so this must
+   * never suppress the tap — that used to make the bar need several presses.
    */
   const snapBack = () => {
-    dragLift.value = withTiming(0, { duration: 130 });
+    dragLift.value = withTiming(0, { duration: 160 });
+    stretch.value = withTiming(0, { duration: 220 });
     lozengeX.value = withSpring(committedX.value, SPRING);
   };
 
+  /** Nearest tab to a bubble center — works for both layout directions. */
+  const indexAt = (centerX: number) => {
+    "worklet";
+    let best = 0;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < centers.length; i += 1) {
+      const distance = Math.abs(centers[i] - centerX);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = i;
+      }
+    }
+    return best;
+  };
+
   const drag = Gesture.Pan()
-    // Only horizontal intent starts a drag; vertical wobble stays a tap.
-    .activeOffsetX([-12, 12])
+    .activeOffsetX([-10, 10])
     .onStart((event) => {
+      cancelAnimation(jelly);
+      jelly.value = 0;
       dragLift.value = withTiming(1, { duration: 120 });
-      if (itemWidth > 0) {
-        const slot = Math.floor((event.x - ITEMS_PADDING) / itemWidth);
-        touchIndex.value =
-          count - 1 - Math.min(count - 1, Math.max(0, slot));
+      stretch.value = withTiming(0.03, { duration: 140 });
+      if (ready) {
+        touchIndex.value = indexAt(event.x);
       }
       runOnJS(tick)();
     })
     .onUpdate((event) => {
-      if (itemWidth <= 0) return;
-      const min = ITEMS_PADDING + LOZENGE_GAP / 2;
-      const max = ITEMS_PADDING + (count - 1) * itemWidth + LOZENGE_GAP / 2;
+      if (!ready) return;
       const next = Math.min(
-        max,
-        Math.max(min, committedX.value + event.translationX)
+        maxTarget,
+        Math.max(minTarget, committedX.value + event.translationX)
       );
       lozengeX.value = next;
 
-      const slot = Math.round((next - min) / itemWidth);
-      const index = count - 1 - Math.min(count - 1, Math.max(0, slot));
+      // Stretch more the faster the finger moves, so the bubble trails.
+      const amount = Math.min(0.16, Math.abs(event.velocityX) / 22000);
+      stretch.value = withTiming(0.03 + amount, { duration: 90 });
+
+      const index = indexAt(next + bubbleWidth / 2);
       if (index !== tickIndex.value) {
         tickIndex.value = index;
         runOnJS(tick)();
       }
     })
     .onEnd((event) => {
-      if (itemWidth <= 0) return;
-      // A tiny wobble is still a tap on the tab that was pressed.
-      if (
-        Math.abs(event.translationX) < 8 &&
-        Math.abs(event.translationY) < 8
-      ) {
-        runOnJS(finishDrag)(touchIndex.value);
-        return;
-      }
-      const min = ITEMS_PADDING + LOZENGE_GAP / 2;
-      const slot = Math.round((lozengeX.value - min) / itemWidth);
-      const index = count - 1 - Math.min(count - 1, Math.max(0, slot));
-      runOnJS(finishDrag)(index);
+      if (!ready) return;
+      const index = indexAt(lozengeX.value + bubbleWidth / 2);
+      runOnJS(finishDrag)(index, event.velocityX);
     })
     .onFinalize((_event, success) => {
       if (!success) {
@@ -304,18 +371,15 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
         />
 
         <GestureDetector gesture={drag}>
-          <View
-            style={styles.items}
-            onLayout={(event) => setBarWidth(event.nativeEvent.layout.width)}
-          >
-            {/* Back layer: the tinted glass body sits behind the icons. */}
-            {lozengeWidth > 0 ? (
+          <View style={styles.bar}>
+            {/* Back layer: the glass body of the bubble, behind the icons. */}
+            {ready ? (
               <Animated.View
                 pointerEvents="none"
-                style={[styles.lozenge, { width: lozengeWidth }, lozengeStyle]}
+                style={[styles.lozenge, { width: bubbleWidth }, lozengeStyle]}
               >
                 <LinearGradient
-                  colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.05)"]}
+                  colors={["rgba(255,255,255,0.20)", "rgba(255,255,255,0.06)"]}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={StyleSheet.absoluteFill}
@@ -323,46 +387,45 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
               </Animated.View>
             ) : null}
 
-            {state.routes.map((route, index) => {
-              const focused = state.index === index;
-              return (
-                <TabItem
-                  key={route.key}
-                  routeName={route.name}
-                  focused={focused}
-                  badge={route.name === "chat" ? chatBadge : 0}
-                  onPress={() => {
-                    if (Date.now() < suppressPressUntil.current) return;
-                    void Haptics.selectionAsync().catch(() => undefined);
-                    const event = emitter.emit({
-                      type: "tabPress",
-                      target: route.key,
-                      canPreventDefault: true,
-                    });
-                    if (!focused && !event.defaultPrevented) {
-                      navigateToTab(route.key);
-                    }
-                  }}
-                />
-              );
-            })}
+            <View style={styles.items}>
+              {state.routes.map((route, index) => {
+                const focused = state.index === index;
+                return (
+                  <TabItem
+                    key={route.key}
+                    routeName={route.name}
+                    focused={focused}
+                    badge={route.name === "chat" ? chatBadge : 0}
+                    onLayout={(rect) => setRect(index, rect)}
+                    onPress={() => {
+                      if (Date.now() < suppressPressUntil.current) return;
+                      void Haptics.selectionAsync().catch(() => undefined);
+                      const event = emitter.emit({
+                        type: "tabPress",
+                        target: route.key,
+                        canPreventDefault: true,
+                      });
+                      if (!focused && !event.defaultPrevented) {
+                        navigateToTab(route.key);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </View>
 
             {/* Front layer: specular rim above the icons, so the glass wraps
                 them instead of sitting invisibly behind them. */}
-            {lozengeWidth > 0 ? (
+            {ready ? (
               <Animated.View
                 pointerEvents="none"
-                style={[
-                  styles.lozengeRim,
-                  { width: lozengeWidth },
-                  lozengeStyle,
-                ]}
+                style={[styles.lozengeRim, { width: bubbleWidth }, lozengeStyle]}
               >
                 <View style={styles.lozengeEdge} />
                 <LinearGradient
                   colors={[
-                    "rgba(255,255,255,0.16)",
-                    "rgba(255,255,255,0.02)",
+                    "rgba(255,255,255,0.18)",
+                    "rgba(255,255,255,0.03)",
                     "rgba(255,255,255,0)",
                   ]}
                   start={{ x: 0.5, y: 0 }}
@@ -410,37 +473,45 @@ const styles = StyleSheet.create({
     right: 16,
     height: 24,
   },
+  /** Full-bleed bar: the bubble is positioned in *this* coordinate space. */
+  bar: {
+    flex: 1,
+  },
   items: {
     flex: 1,
     flexDirection: "row-reverse",
     alignItems: "center",
-    paddingHorizontal: ITEMS_PADDING,
+    paddingHorizontal: 8,
   },
+  /* The bubble: explicit `left: 0` so it can never inherit a static position
+     from the row (that was pushing it outside the pill on the edge tabs). */
   lozenge: {
     position: "absolute",
+    left: 0,
     top: LOZENGE_TOP,
-    height: tabBarHeight - LOZENGE_TOP * 2,
-    borderRadius: 22,
+    height: LOZENGE_HEIGHT,
+    borderRadius: LOZENGE_HEIGHT / 2,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    boxShadow: "0px 8px 20px -8px rgba(0,0,0,0.65)",
+    backgroundColor: "rgba(255,255,255,0.10)",
+    boxShadow: "0px 10px 24px -8px rgba(0,0,0,0.70)",
   },
   lozengeRim: {
     position: "absolute",
+    left: 0,
     top: LOZENGE_TOP,
-    height: tabBarHeight - LOZENGE_TOP * 2,
-    borderRadius: 22,
+    height: LOZENGE_HEIGHT,
+    borderRadius: LOZENGE_HEIGHT / 2,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
+    borderColor: "rgba(255,255,255,0.26)",
   },
   lozengeEdge: {
     position: "absolute",
     top: 0,
-    left: 10,
-    right: 10,
+    left: 12,
+    right: 12,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.28)",
+    backgroundColor: "rgba(255,255,255,0.34)",
   },
   item: {
     flex: 1,
