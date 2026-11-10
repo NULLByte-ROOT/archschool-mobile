@@ -2,6 +2,7 @@ import * as SecureStore from "expo-secure-store";
 import { create } from "zustand";
 
 import {
+  fetchMe,
   setAuthToken,
   setUnauthorizedHandler,
   unregisterPushToken,
@@ -46,6 +47,8 @@ interface AuthState {
   hydrate: () => Promise<void>;
   setSession: (token: string, user: User) => Promise<void>;
   setUser: (user: User) => Promise<void>;
+  /** Pull the fresh role/profile from the API (admin role changes apply). */
+  refreshSession: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -84,6 +87,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setUser: async (user) => {
     set({ user });
     await writeSecure(USER_KEY, JSON.stringify(user));
+  },
+
+  refreshSession: async () => {
+    if (!get().token) return;
+    try {
+      const user = await fetchMe();
+      set({ user });
+      await writeSecure(USER_KEY, JSON.stringify(user));
+    } catch {
+      // A 401 is handled by `setUnauthorizedHandler` (it logs out). A network
+      // failure keeps the cached user so an offline cold start still works.
+    }
   },
 
   logout: async () => {

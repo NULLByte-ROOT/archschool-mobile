@@ -13,7 +13,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { StyleSheet } from "react-native";
+import { AppState, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
@@ -60,6 +60,26 @@ function AppShell({ ready }: { ready: boolean }) {
   usePulseSocket();
   usePushRegistration();
   useNotificationObserver();
+
+  const token = useAuthStore((state) => state.token);
+  const refreshSession = useAuthStore((state) => state.refreshSession);
+
+  // Roles are edited by an admin on another device. The cached user from
+  // SecureStore can therefore be stale (a freshly promoted friend would still
+  // see the chat lock). Refresh on cold start and whenever the app comes back
+  // to the foreground, exactly like the web AuthProvider does on reload.
+  useEffect(() => {
+    if (!token) return;
+    void refreshSession();
+  }, [refreshSession, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshSession();
+    });
+    return () => subscription.remove();
+  }, [refreshSession, token]);
 
   return (
     <>

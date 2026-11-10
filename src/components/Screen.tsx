@@ -1,7 +1,7 @@
 import { BlurView } from "expo-blur";
 import { LinearGradient } from "expo-linear-gradient";
 import type { ReactNode } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -47,14 +47,18 @@ export function Screen({
           pointerEvents="none"
           style={[styles.veil, { height: insets.top }]}
         >
-          <BlurView
-            intensity={70}
-            tint="systemChromeMaterialDark"
-            blurMethod="dimezisBlurViewSdk31Plus"
-            style={StyleSheet.absoluteFill}
-          />
+          {/* Same trade-off as the tab bar: real glass on iOS, a static veil on
+              Android so switching tabs never pays for a full-screen blur. */}
+          {Platform.OS === "ios" ? (
+            <BlurView
+              intensity={60}
+              tint="systemChromeMaterialDark"
+              blurMethod="dimezisBlurViewSdk31Plus"
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null}
           <LinearGradient
-            colors={["rgba(8,8,11,0.68)", "rgba(8,8,11,0.22)"]}
+            colors={["rgba(8,8,11,0.82)", "rgba(8,8,11,0.34)"]}
             style={StyleSheet.absoluteFill}
           />
         </View>

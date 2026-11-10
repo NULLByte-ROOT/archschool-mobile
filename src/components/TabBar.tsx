@@ -4,8 +4,8 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   cancelAnimation,
@@ -48,8 +48,14 @@ const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName
   profile: { label: "پروفایل", icon: "person-circle-outline", activeIcon: "person-circle" },
 };
 
-/** Gap between the bubble and the tab it covers (keeps clear of the pill rim). */
-const LOZENGE_GAP = 14;
+/**
+ * The bubble is a wide horizontal ellipse: slightly wider than one tab so it
+ * reads as a liquid lens instead of a circle, and it stays inside the pill.
+ */
+const BUBBLE_INSET = 6;
+const BUBBLE_EXTRA_WIDTH = 16;
+const BUBBLE_MIN_WIDTH = 68;
+const BUBBLE_MAX_WIDTH = 94;
 const LOZENGE_TOP = 10;
 const LOZENGE_HEIGHT = tabBarHeight - LOZENGE_TOP * 2;
 
@@ -67,7 +73,7 @@ function TabItem({
 }: {
   routeName: string;
   focused: boolean;
-  badge: number;
+  badge?: ReactNode;
   onPress: () => void;
   onLayout: (rect: Rect) => void;
 }) {
@@ -123,7 +129,7 @@ function TabItem({
             color={focused ? colors.white : "rgba(255,255,255,0.62)"}
           />
         </Animated.View>
-        {badge > 0 && !focused ? <Badge count={badge} style={styles.badge} /> : null}
+        {badge}
       </View>
 
       <Animated.View style={labelStyle}>
@@ -144,55 +150,96 @@ function TabItem({
   );
 }
 
-export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarProps) {
+/**
+ * The unread query lives in its own leaf so a 45s poll re-renders one small
+ * badge instead of the whole tab bar (gesture detector + five animated tabs).
+ * That keeps the first paint and every later poll cheap.
+ */
+function ChatTabBadge({ focused }: { focused: boolean }) {
   const { data } = useQuery({
     queryKey: qk.unread,
     queryFn: fetchUnread,
-    refetchInterval: 45000,
-    staleTime: 15000,
+    refetchInterval: 60000,
+    staleTime: 30000,
+    retry: 0,
   });
-  const chatBadge = data?.total ?? 0;
+  const count = data?.total ?? 0;
+  if (focused || count <= 0) return null;
+  return <Badge count={count} style={styles.badge} />;
+}
 
+export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarProps) {
   const count = state.routes.length;
 
   // Real measured geometry, one entry per tab. `x` is relative to the bar.
   const [rects, setRects] = useState<(Rect | undefined)[]>([]);
+  // Collect all five layouts before asking React to render once; the old code
+  // updated state on every onLayout (five renders before the first frame).
+  const rectsRef = useRef<(Rect | undefined)[]>([]);
 
-  const itemWidth = rects.find((rect) => rect)?.width ?? 0;
-  const bubbleWidth = Math.max(itemWidth - LOZENGE_GAP, 0);
+  const measured = rects.filter((rect): rect is Rect => Boolean(rect));
+  const itemWidth = measured[0]?.width ?? 0;
+  const barWidth = measured.length
+    ? Math.max(...measured.map((rect) => rect.x + rect.width)) +
+      Math.min(...measured.map((rect) => rect.x))
+    : 0;
+  const bubbleWidth = barWidth
+    ? Math.min(
+        Math.max(itemWidth + BUBBLE_EXTRA_WIDTH, BUBBLE_MIN_WIDTH),
+        BUBBLE_MAX_WIDTH,
+        barWidth - BUBBLE_INSET * 2
+      )
+    : 0;
+
+  const clampLeft = (left: number) => {
+    const maxLeft = Math.max(
+      barWidth - bubbleWidth - BUBBLE_INSET,
+      BUBBLE_INSET
+    );
+    return Math.min(maxLeft, Math.max(BUBBLE_INSET, left));
+  };
 
   // Every tab's bubble position (left edge), in the bar's coordinate space.
   const targets = rects.map((rect) =>
-    rect ? rect.x + LOZENGE_GAP / 2 : Number.NaN
+    rect
+      ? clampLeft(rect.x + rect.width / 2 - bubbleWidth / 2)
+      : Number.NaN
   );
   const centers = rects.map((rect) =>
     rect ? rect.x + rect.width / 2 : Number.NaN
   );
-  const ready = rects.filter(Boolean).length === count && bubbleWidth > 0;
+  const ready =
+    rects.filter(Boolean).length === count && bubbleWidth > 0 && barWidth > 0;
   const targetX = targets[state.index];
   const minTarget = ready ? Math.min(...(targets as number[])) : 0;
   const maxTarget = ready ? Math.max(...(targets as number[])) : 0;
 
   const lozengeX = useSharedValue(0);
   const committedX = useSharedValue(0);
+  const dragOriginX = useSharedValue(0);
   const dragLift = useSharedValue(0);
   const stretch = useSharedValue(0);
   const jelly = useSharedValue(0);
   const tickIndex = useSharedValue(-1);
-  const touchIndex = useSharedValue(0);
-  const measured = useRef(false);
+  const measuredOnce = useRef(false);
   const suppressPressUntil = useRef(0);
 
   const setRect = (index: number, rect: Rect) => {
-    setRects((prev) => {
-      const old = prev[index];
-      if (old && Math.abs(old.x - rect.x) < 0.5 && Math.abs(old.width - rect.width) < 0.5) {
-        return prev;
-      }
-      const next = prev.slice();
-      next[index] = rect;
-      return next;
-    });
+    const prev = rectsRef.current;
+    const old = prev[index];
+    if (
+      old &&
+      Math.abs(old.x - rect.x) < 0.5 &&
+      Math.abs(old.width - rect.width) < 0.5
+    ) {
+      return;
+    }
+    const next = prev.slice();
+    next[index] = rect;
+    rectsRef.current = next;
+    if (next.filter(Boolean).length === count) {
+      setRects(next);
+    }
   };
 
   /** A loose, decaying wobble — the "let go and it jiggles" feel. */
@@ -216,9 +263,9 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
   useEffect(() => {
     if (!ready || !Number.isFinite(targetX)) return;
     committedX.value = targetX;
-    if (!measured.current) {
+    if (!measuredOnce.current) {
       lozengeX.value = targetX;
-      measured.current = true;
+      measuredOnce.current = true;
       return;
     }
     lozengeX.value = withSpring(targetX, SPRING);
@@ -307,21 +354,29 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
 
   const drag = Gesture.Pan()
     .activeOffsetX([-10, 10])
-    .onStart((event) => {
+    .onBegin((event) => {
+      // Put the glass lens under the finger the moment it touches the bar —
+      // not only after a horizontal drag activates or a tab is selected.
       cancelAnimation(jelly);
       jelly.value = 0;
+      if (!ready) return;
+      const left = Math.min(
+        maxTarget,
+        Math.max(minTarget, event.x - bubbleWidth / 2)
+      );
+      lozengeX.value = left;
+      dragOriginX.value = left;
+    })
+    .onStart(() => {
       dragLift.value = withTiming(1, { duration: 120 });
       stretch.value = withTiming(0.03, { duration: 140 });
-      if (ready) {
-        touchIndex.value = indexAt(event.x);
-      }
       runOnJS(tick)();
     })
     .onUpdate((event) => {
       if (!ready) return;
       const next = Math.min(
         maxTarget,
-        Math.max(minTarget, committedX.value + event.translationX)
+        Math.max(minTarget, dragOriginX.value + event.translationX)
       );
       lozengeX.value = next;
 
@@ -355,13 +410,17 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
       ]}
     >
       <View style={styles.pill}>
-        <BlurView
-          intensity={80}
-          tint="systemChromeMaterialDark"
-          blurMethod="dimezisBlurViewSdk31Plus"
-          style={StyleSheet.absoluteFill}
-        />
-        {/* Fallback tint: keeps the glass readable if the platform can't blur. */}
+        {/* Android blur is the single most expensive part of the first frame.
+            iOS gets the real blur; Android keeps the same dark glass with a
+            static tint, which looks nearly identical and never stalls input. */}
+        {Platform.OS === "ios" ? (
+          <BlurView
+            intensity={70}
+            tint="systemChromeMaterialDark"
+            blurMethod="dimezisBlurViewSdk31Plus"
+            style={StyleSheet.absoluteFill}
+          />
+        ) : null}
         <View style={styles.pillTint} pointerEvents="none" />
         {/* Top inner highlight — the "liquid" sheen. */}
         <LinearGradient
@@ -395,7 +454,11 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
                     key={route.key}
                     routeName={route.name}
                     focused={focused}
-                    badge={route.name === "chat" ? chatBadge : 0}
+                    badge={
+                      route.name === "chat" ? (
+                        <ChatTabBadge focused={focused} />
+                      ) : undefined
+                    }
                     onLayout={(rect) => setRect(index, rect)}
                     onPress={() => {
                       if (Date.now() < suppressPressUntil.current) return;
@@ -464,7 +527,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "rgba(10,10,14,0.34)",
+    // Without the iOS blur layer the tint has to carry the contrast itself.
+    backgroundColor:
+      Platform.OS === "ios" ? "rgba(10,10,14,0.34)" : "rgba(10,10,14,0.88)",
   },
   sheen: {
     position: "absolute",

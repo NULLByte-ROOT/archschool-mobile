@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
-import { useMemo, useRef, useState, type ComponentRef } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -263,10 +263,19 @@ export default function ChatHubScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const user = useAuthStore((state) => state.user);
+  const refreshSession = useAuthStore((state) => state.refreshSession);
   const [composerOpen, setComposerOpen] = useState(false);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const searchRef = useRef<ComponentRef<typeof TextInput>>(null);
+
+  // Opening the tab is the moment the role matters most: re-read it so an
+  // admin promoting a member to "friend" unlocks chat without a re-login.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   const member = !canChat(user);
 
