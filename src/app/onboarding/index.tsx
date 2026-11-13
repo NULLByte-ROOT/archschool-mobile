@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Dimensions,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Pressable,
-  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -10,57 +12,96 @@ import {
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Animated, {
+  FadeIn,
   FadeInDown,
   FadeInUp,
   useAnimatedStyle,
-  withSpring,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ThreeDCore } from "@/components/ThreeDCore";
+import { ThreeDFullScene } from "@/components/ThreeDFullScene";
 import { colors } from "@/theme/tokens";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 const SLIDES = [
   {
-    title: "دستیار هوشمند درس‌ها و تکالیف",
-    subtitle: "سازماندهی فوق‌پیشرفته",
+    type: 0 as const,
+    badge: "// ۰۱ · هسته هوشمند",
+    subtitle: "سازماندهی فوق‌پیشرفته و هوشمند",
+    title: "مدیریت یکپارچه درس‌ها و تکالیف",
     description:
-      "تکالیف، پروژه‌ها و جزوات کلاسی را در یک فضای هوشمند، شیک و همیشه در دسترس مدیریت کن.",
-    badge: "هسته مرکزی",
-    accent: "#60A5FA",
+      "تمام تکالیف، جزوات، پیوست‌ها و سررسیدهای درسی را در یک فضای هوشمند، شیک و همیشه در دسترس مدیریت کن.",
+    accent: "#38BDF8",
+    gradient: ["#0284C7", "#38BDF8"] as const,
   },
   {
-    title: "دیدبان زنده زنگ‌ها و زمان",
+    type: 1 as const,
+    badge: "// ۰۲ · رادار زمان",
     subtitle: "تایمرهای دقیق و زنگ تفریح",
+    title: "دیدبان زنده زنگ‌ها و تایم‌لاین",
     description:
-      "شمارش معکوس بلادرنگ برای پایان زنگ‌ها، مدیریت زنگ‌های تفریح و جدول برنامه هفتگی اختصاصی.",
-    badge: "رادار زمان",
-    accent: colors.warning,
+      "شمارش معکوس بلادرنگ برای پایان زنگ‌ها، مدیریت زنگ‌های تفریح و جدول برنامه هفتگی بدون هیچ سردرگمی.",
+    accent: "#FBBF24",
+    gradient: ["#D97706", "#FBBF24"] as const,
   },
   {
-    title: "رقابت تیمی و لیگ همکلاسی‌ها",
+    type: 2 as const,
+    badge: "// ۰۳ · لیگ کلاسی",
     subtitle: "استریک روزانه و لیدربورد",
+    title: "رقابت تیمی، استریک و لیدربورد",
     description:
-      "با دوستانت در کلاس رقابت کن، استریک ثبت کن و نامت را در صدر جدول برترین‌های مدرسه ثبت کن.",
-    badge: "لیگ کلاس",
-    accent: colors.emerald,
+      "با دوستانت در کلاس رقابت کن، استریک روزانه ثبت کن و جایگاهت را در صدر جدول برترین‌های مدرسه تثبیت کن.",
+    accent: "#34D399",
+    gradient: ["#059669", "#34D399"] as const,
   },
 ];
 
+function ScrollHint({ accent }: { accent: string }) {
+  const bounce = useSharedValue(0);
+
+  React.useEffect(() => {
+    bounce.value = withRepeat(
+      withSequence(
+        withTiming(8, { duration: 800 }),
+        withTiming(0, { duration: 800 })
+      ),
+      -1,
+      true
+    );
+  }, [bounce]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: bounce.value }],
+  }));
+
+  return (
+    <Animated.View style={[styles.scrollHintContainer, animStyle]}>
+      <Text style={[styles.scrollHintText, { color: accent }]}>
+        برای ادامه به پایین بکشید
+      </Text>
+      <Ionicons name="chevron-down" size={18} color={accent} />
+    </Animated.View>
+  );
+}
+
 export default function OnboardingOverview() {
   const router = useRouter();
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<any>(null);
+  const [currentPage, setCurrentPage] = useState(0);
 
-  const handleNext = async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (currentSlide < SLIDES.length - 1) {
-      setCurrentSlide((prev) => prev + 1);
-    } else {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push("/onboarding/auth");
+  const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const page = Math.round(e.nativeEvent.contentOffset.y / height);
+    if (page !== currentPage && page >= 0 && page < SLIDES.length) {
+      setCurrentPage(page);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
 
@@ -69,109 +110,119 @@ export default function OnboardingOverview() {
     router.push("/onboarding/auth");
   };
 
-  const slide = SLIDES[currentSlide];
+  const handleContinue = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push("/onboarding/auth");
+  };
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        {/* Top Bar with Skip */}
-        <Animated.View entering={FadeInDown.delay(100)} style={styles.topBar}>
-          <Pressable onPress={handleSkip} hitSlop={12} style={styles.skipBtn}>
-            <Text style={styles.skipText}>رد شدن</Text>
-            <Ionicons name="chevron-back" size={16} color={colors.muted} />
-          </Pressable>
+    <View style={styles.root}>
+      {/* Floating Top Header (Fixed above scroll) */}
+      <View style={[styles.topHeader, { top: insets.top + 10 }]}>
+        <Pressable onPress={handleSkip} hitSlop={14} style={styles.skipBtn}>
+          <Text style={styles.skipText}>رد شدن</Text>
+          <Ionicons name="chevron-back" size={14} color={colors.muted} />
+        </Pressable>
 
-          <View style={styles.brandRow}>
-            <View style={[styles.statusDot, { backgroundColor: slide.accent }]} />
-            <Text style={styles.brandTitle}>ARCHSCHOOL 2.0</Text>
-          </View>
-        </Animated.View>
-
-        {/* 3D Masterpiece Model View */}
-        <View style={styles.canvasContainer}>
-          <ThreeDCore stage={currentSlide} interactive={true} />
-          <Text style={styles.dragHint}>
-            <Ionicons name="finger-print-outline" size={12} color={colors.faint} /> برای چرخش سه‌بعدی لمس و بکشید
-          </Text>
+        {/* Vertical Page Indicator Pills */}
+        <View style={styles.indicatorPills}>
+          {SLIDES.map((s, idx) => (
+            <View
+              key={idx}
+              style={[
+                styles.pill,
+                idx === currentPage
+                  ? [styles.activePill, { backgroundColor: s.accent, height: 22 }]
+                  : null,
+              ]}
+            />
+          ))}
         </View>
 
-        {/* Info Slide Card */}
-        <Animated.View
-          key={currentSlide}
-          entering={FadeInUp.duration(400)}
-          style={styles.card}
-        >
-          <View style={styles.badgeRow}>
-            <View style={[styles.badge, { borderColor: slide.accent }]}>
-              <Text style={[styles.badgeText, { color: slide.accent }]}>
-                {slide.badge}
-              </Text>
-            </View>
-            <Text style={styles.subtitleText}>{slide.subtitle}</Text>
-          </View>
-
-          <Text style={styles.titleText}>{slide.title}</Text>
-          <Text style={styles.descriptionText}>{slide.description}</Text>
-        </Animated.View>
-
-        {/* Pagination & Continue Button */}
-        <View style={styles.bottomSection}>
-          <View style={styles.paginationRow}>
-            {SLIDES.map((_, idx) => (
-              <View
-                key={idx}
-                style={[
-                  styles.dot,
-                  idx === currentSlide
-                    ? [styles.activeDot, { backgroundColor: slide.accent, width: 28 }]
-                    : null,
-                ]}
-              />
-            ))}
-          </View>
-
-          <Pressable onPress={handleNext} style={styles.continueBtn}>
-            <LinearGradient
-              colors={[colors.accent, colors.accentDeep]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.btnGradient}
-            >
-              <Text style={styles.continueText}>
-                {currentSlide === SLIDES.length - 1 ? "ورود و ثبت‌نام" : "ادامه"}
-              </Text>
-              <Ionicons
-                name={
-                  currentSlide === SLIDES.length - 1
-                    ? "arrow-back"
-                    : "chevron-back"
-                }
-                size={18}
-                color={colors.onAccent}
-              />
-            </LinearGradient>
-          </Pressable>
+        <View style={styles.brandBadge}>
+          <Text style={styles.brandTitle}>ARCHSCHOOL</Text>
         </View>
       </View>
-    </SafeAreaView>
+
+      {/* Full-Screen Vertical Pager */}
+      <ScrollView
+        ref={scrollRef}
+        pagingEnabled
+        showsVerticalScrollIndicator={false}
+        decelerationRate="fast"
+        snapToInterval={height}
+        snapToAlignment="start"
+        onMomentumScrollEnd={handleScroll}
+        style={styles.scrollView}
+      >
+        {SLIDES.map((slide, idx) => {
+          const isLast = idx === SLIDES.length - 1;
+          return (
+            <View key={idx} style={[styles.page, { height, width }]}>
+              {/* Fullscreen 3D Interactive Model Scene */}
+              <View style={[styles.sceneWrapper, { marginTop: insets.top + 30 }]}>
+                <ThreeDFullScene type={slide.type} />
+                <Text style={styles.touchHint}>
+                  <Ionicons name="finger-print-outline" size={12} color={colors.faint} /> برای چرخش لمس کنید و بچرخانید
+                </Text>
+              </View>
+
+              {/* Informative Floating Card */}
+              <View style={[styles.cardWrapper, { paddingBottom: insets.bottom + 20 }]}>
+                <View style={styles.glassCard}>
+                  {/* Badge Row */}
+                  <View style={styles.badgeRow}>
+                    <View style={[styles.badge, { borderColor: slide.accent }]}>
+                      <Text style={[styles.badgeText, { color: slide.accent }]}>
+                        {slide.badge}
+                      </Text>
+                    </View>
+                    <Text style={styles.subtitleText}>{slide.subtitle}</Text>
+                  </View>
+
+                  <Text style={styles.titleText}>{slide.title}</Text>
+                  <Text style={styles.descriptionText}>{slide.description}</Text>
+
+                  {/* On last slide: Action Continue Button */}
+                  {isLast ? (
+                    <Pressable onPress={handleContinue} style={styles.continueBtn}>
+                      <LinearGradient
+                        colors={[colors.accent, colors.accentDeep]}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.continueGradient}
+                      >
+                        <Text style={styles.continueBtnText}>شروع تجربه و ورود</Text>
+                        <Ionicons name="arrow-back" size={18} color={colors.onAccent} />
+                      </LinearGradient>
+                    </Pressable>
+                  ) : (
+                    /* On earlier slides: Animated Scroll Down Prompt */
+                    <ScrollHint accent={slide.accent} />
+                  )}
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
+  root: {
     flex: 1,
     backgroundColor: colors.ink,
   },
-  container: {
-    flex: 1,
-    paddingHorizontal: 22,
-    justifyContent: "space-between",
-  },
-  topBar: {
+  topHeader: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    zIndex: 50,
     flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 12,
   },
   skipBtn: {
     flexDirection: "row-reverse",
@@ -180,50 +231,82 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 20,
-    backgroundColor: colors.white05,
+    backgroundColor: "rgba(20,20,28,0.75)",
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: colors.lineStrong,
   },
   skipText: {
     fontFamily: "Vazirmatn_500Medium",
-    fontSize: 13,
+    fontSize: 12,
     color: colors.muted,
   },
-  brandRow: {
-    flexDirection: "row-reverse",
+  indicatorPills: {
+    flexDirection: "column",
+    gap: 5,
     alignItems: "center",
-    gap: 8,
+    backgroundColor: "rgba(20,20,28,0.65)",
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.line,
   },
-  statusDot: {
-    width: 8,
+  pill: {
+    width: 4,
     height: 8,
-    borderRadius: 4,
+    borderRadius: 2,
+    backgroundColor: colors.white15,
+  },
+  activePill: {
+    width: 4,
+    borderRadius: 2,
+  },
+  brandBadge: {
+    backgroundColor: "rgba(20,20,28,0.75)",
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   brandTitle: {
     fontFamily: "Vazirmatn_700Bold",
-    fontSize: 14,
+    fontSize: 12,
     letterSpacing: 1.5,
     color: colors.text,
   },
-  canvasContainer: {
+  scrollView: {
+    flex: 1,
+  },
+  page: {
+    justifyContent: "space-between",
+    backgroundColor: colors.ink,
+  },
+  sceneWrapper: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    maxHeight: 330,
   },
-  dragHint: {
+  touchHint: {
     fontFamily: "Vazirmatn_400Regular",
     fontSize: 11,
     color: colors.faint,
-    marginTop: 8,
+    marginTop: 4,
   },
-  card: {
-    backgroundColor: colors.panelPhone,
+  cardWrapper: {
+    paddingHorizontal: 20,
+  },
+  glassCard: {
+    backgroundColor: "rgba(12,12,18,0.92)",
     borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 24,
+    borderColor: colors.lineStrong,
+    borderRadius: 26,
     padding: 22,
-    marginBottom: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 8,
   },
   badgeRow: {
     flexDirection: "row-reverse",
@@ -239,7 +322,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white03,
   },
   badgeText: {
-    fontFamily: "Vazirmatn_600SemiBold",
+    fontFamily: "Vazirmatn_700Bold",
     fontSize: 11,
   },
   subtitleText: {
@@ -257,47 +340,38 @@ const styles = StyleSheet.create({
   },
   descriptionText: {
     fontFamily: "Vazirmatn_400Regular",
-    fontSize: 14,
+    fontSize: 13,
     color: colors.bodyCopy,
     textAlign: "right",
     lineHeight: 22,
+    marginBottom: 16,
   },
-  bottomSection: {
-    flexDirection: "row-reverse",
+  scrollHintContainer: {
+    flexDirection: "column",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: 20,
-    gap: 16,
+    justifyContent: "center",
+    paddingTop: 4,
+    gap: 2,
   },
-  paginationRow: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 6,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.white15,
-  },
-  activeDot: {
-    borderRadius: 4,
+  scrollHintText: {
+    fontFamily: "Vazirmatn_500Medium",
+    fontSize: 12,
   },
   continueBtn: {
-    flex: 1,
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: "hidden",
+    marginTop: 4,
   },
-  btnGradient: {
+  continueGradient: {
     flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
     paddingVertical: 14,
   },
-  continueText: {
+  continueBtnText: {
     fontFamily: "Vazirmatn_700Bold",
-    fontSize: 16,
+    fontSize: 15,
     color: colors.onAccent,
   },
 });
