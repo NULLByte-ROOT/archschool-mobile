@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
@@ -16,11 +19,16 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  addAttachment,
   ApiError,
   createAssignment,
+  deleteAttachment,
   fetchAssignment,
+  fetchAttachments,
   qk,
+  resolveMediaUrl,
   updateAssignment,
+  type PickedFile,
 } from "@/api/client";
 import { Screen } from "@/components/Screen";
 import { SelectSheet, type SelectOption } from "@/components/SelectSheet";
@@ -155,6 +163,36 @@ export default function NewAssignmentScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(!editing);
+  const [selectedPhotos, setSelectedPhotos] = useState<PickedFile[]>([]);
+
+  const existingAttachments = useQuery({
+    queryKey: qk.attachments(editId ?? 0),
+    queryFn: () => fetchAttachments(editId as number),
+    enabled: editing && Boolean(editId),
+  });
+
+  const pickPhotos = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("دسترسی لازم است", "برای افزودن عکس، دسترسی به تصاویر را در تنظیمات مجاز کنید.");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.85,
+    });
+    if (!res.canceled && res.assets && res.assets.length > 0) {
+      const added: PickedFile[] = res.assets.map((asset, index) => ({
+        uri: asset.uri,
+        name: asset.fileName || `photo_${Date.now()}_${index}.jpg`,
+        type: asset.mimeType || "image/jpeg",
+        size: asset.fileSize,
+      }));
+      setSelectedPhotos((prev) => [...prev, ...added]);
+      void Haptics.selectionAsync().catch(() => undefined);
+    }
+  };
 
   const existing = useQuery({
     queryKey: qk.assignment(editId ?? 0),
@@ -233,11 +271,18 @@ export default function NewAssignmentScreen() {
           ? await updateAssignment(editId as number, payload)
           : await createAssignment(payload);
 
+        if (selectedPhotos.length > 0) {
+          for (const photo of selectedPhotos) {
+            await addAttachment(saved.id, photo);
+          }
+        }
+
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
           () => undefined
         );
         queryClient.setQueryData(qk.assignment(saved.id), saved);
         await queryClient.invalidateQueries({ queryKey: qk.assignments });
+        await queryClient.invalidateQueries({ queryKey: qk.attachments(saved.id) });
         void queryClient.invalidateQueries({ queryKey: qk.overview });
         void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
         router.back();
@@ -430,6 +475,85 @@ export default function NewAssignmentScreen() {
                     <AppText color={colors.faint} style={{ fontSize: 10.5, lineHeight: 17, marginTop: 6 }}>
                       خالی بگذاری، همین عنوان ثبت می‌شود.
                     </AppText>
+                  ) : null}
+                </View>
+
+                <View style={{ marginTop: 16 }}>
+                  <MonoLabel style={{ marginBottom: 8 }}>عکس‌های تکلیف (اختیاری)</MonoLabel>
+                  <Pressable
+                    onPress={() => void pickPhotos()}
+                    style={styles.imagePickerButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="افزودن عکس"
+                  >
+                    <Ionicons name="camera-outline" size={18} color={colors.white} />
+                    <AppText style={{ fontFamily: fonts.semibold, fontSize: 13 }} color={colors.white}>
+                      افزودن عکس به تکلیف
+                    </AppText>
+                  </Pressable>
+
+                  {selectedPhotos.length > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.selectedPhotosRow}
+                      style={{ marginTop: 10 }}
+                    >
+                      {selectedPhotos.map((photo, index) => (
+                        <View key={index} style={styles.selectedPhotoThumb}>
+                          <Image
+                            source={{ uri: photo.uri }}
+                            style={styles.thumbImage}
+                            contentFit="cover"
+                          />
+                          <Pressable
+                            onPress={() => {
+                              setSelectedPhotos((prev) => prev.filter((_, i) => i !== index));
+                            }}
+                            style={styles.thumbRemove}
+                            hitSlop={6}
+                          >
+                            <Ionicons name="close" size={13} color={colors.white} />
+                          </Pressable>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  ) : null}
+
+                  {editing && (existingAttachments.data ?? []).length > 0 ? (
+                    <View style={{ marginTop: 12 }}>
+                      <AppText color={colors.faint} style={{ fontSize: 11, marginBottom: 6 }}>
+                        عکس‌های ثبت‌شده:
+                      </AppText>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.selectedPhotosRow}
+                      >
+                        {(existingAttachments.data ?? []).map((att) => (
+                          <View key={att.id} style={styles.selectedPhotoThumb}>
+                            <Image
+                              source={{ uri: resolveMediaUrl(att.file_url) }}
+                              style={styles.thumbImage}
+                              contentFit="cover"
+                            />
+                            <Pressable
+                              onPress={() => {
+                                void deleteAttachment(att.id).then(() => {
+                                  void queryClient.invalidateQueries({
+                                    queryKey: qk.attachments(editId as number),
+                                  });
+                                });
+                              }}
+                              style={styles.thumbRemove}
+                              hitSlop={6}
+                            >
+                              <Ionicons name="trash-outline" size={12} color={colors.white} />
+                            </Pressable>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
                   ) : null}
                 </View>
 
@@ -848,5 +972,46 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 28,
     paddingBottom: 60,
+  },
+  imagePickerButton: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+  },
+  selectedPhotosRow: {
+    flexDirection: "row-reverse",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  selectedPhotoThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: 10,
+    overflow: "hidden",
+    position: "relative",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  thumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  thumbRemove: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

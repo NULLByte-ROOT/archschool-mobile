@@ -46,6 +46,7 @@ percentage leaderboard, streaks, chat rooms and Persian RTL UI.
    committed. The JWT lives in SecureStore, never in AsyncStorage.
 7. **Never commit** `node_modules/`, `.expo/`, `dist/`, `.expo-export-test/`,
    `.env`, keystores, or generated native folders.
+8. **Always ask before EAS deploy/update.** Publishing OTA updates (`eas update`) or triggering builds (`eas build`) affects real users and uses EAS credits. Never execute EAS update or build commands autonomously; always ask the user for explicit confirmation before running them.
 
 ## 4. Backend contract
 

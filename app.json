@@ -24,7 +24,8 @@
       }
     },
     "android": {
-      "package": "ir.vidxsepehr.archschool",
+      "package": "archschool.vidxsepehr.ir",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",

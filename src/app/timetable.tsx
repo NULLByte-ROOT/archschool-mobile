@@ -14,7 +14,7 @@ import { AppText } from "@/components/ui";
 import { IconTile, Kicker, Panel, PanelHeader, PulseDot } from "@/components/webui";
 import { useBellSchedule } from "@/hooks/useBellSchedule";
 import { useNow } from "@/hooks/useNow";
-import { formatClock, getCurrentBellState, leftMinutes, schoolEnd, schoolStart } from "@/lib/bell";
+import { formatClock, getCurrentBellState, schoolEnd, schoolStart } from "@/lib/bell";
 import { faDate, fmtNum, parseDue } from "@/lib/format";
 import {
   TIMETABLE,
@@ -482,7 +482,7 @@ export default function TimetableScreen() {
 
         {/* current period */}
         <Animated.View entering={FadeInDown.duration(180).delay(20)} style={{ marginBottom: 16 }}>
-          <SchoolStatusCard />
+          <SchoolStatusCard showNextDay={false} />
         </Animated.View>
 
         {/* weekly timetable */}
@@ -531,110 +531,8 @@ export default function TimetableScreen() {
           </Panel>
         </Animated.View>
 
-        {/* bells */}
-        <Animated.View entering={FadeInDown.duration(180).delay(60)} style={{ marginBottom: 16 }}>
-          <Panel corners contentStyle={styles.panelPad}>
-            <PanelHeader
-              label="// BELLS"
-              title="زنگ‌های امروز"
-              icon="time"
-              accessory={
-                <IconTile name="alarm-outline" size={32} iconSize={15} tone={colors.textSoft} />
-              }
-            />
-
-            <View style={styles.list}>
-              {bells.map((bell, index) => {
-                const active = state.state === "class" && state.bellIndex === index;
-                const next = bells[index + 1];
-                const gap = next ? next.start - bell.end : 0;
-
-                return (
-                  <View key={bell.number}>
-                    <View style={[styles.row, active && styles.rowActive]}>
-                      <View
-                        style={[
-                          styles.badgeSquare,
-                          active && {
-                            backgroundColor: colors.amberSoft,
-                            borderColor: colors.amberLine,
-                          },
-                        ]}
-                      >
-                        <AppText
-                          ltr
-                          color={active ? colors.amber : colors.muted}
-                          style={{
-                            fontFamily: fonts.bold,
-                            fontSize: 14,
-                            lineHeight: 20,
-                            fontVariant: ["tabular-nums"],
-                          }}
-                        >
-                          {fmtNum(bell.number)}
-                        </AppText>
-                      </View>
-
-                      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                        <AppText
-                          style={{ fontFamily: fonts.semibold, fontSize: 12.5, lineHeight: 18 }}
-                        >
-                          {bell.label}
-                        </AppText>
-                        <AppText
-                          ltr
-                          color={active ? colors.amber : colors.faint}
-                          style={{ fontSize: 10.5, lineHeight: 15, fontVariant: ["tabular-nums"] }}
-                        >
-                          {formatClock(bell.start)} — {formatClock(bell.end)}
-                        </AppText>
-                      </View>
-
-                      {active ? (
-                        <AppText color={colors.amber} style={{ fontSize: 10.5, lineHeight: 15 }}>
-                          {fmtNum(leftMinutes(state.remainingMs))} دقیقه مانده
-                        </AppText>
-                      ) : (
-                        <AppText color={colors.faint} style={{ fontSize: 10.5, lineHeight: 15 }}>
-                          {fmtNum(bell.end - bell.start)} دقیقه
-                        </AppText>
-                      )}
-                    </View>
-
-                    {gap > 0 ? (
-                      <View style={styles.breakRow}>
-                        <View style={styles.breakIcon}>
-                          <Ionicons name="cafe-outline" size={14} color={colors.success} />
-                        </View>
-                        <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-                          <AppText
-                            color="#a7f3d0"
-                            style={{ fontFamily: fonts.semibold, fontSize: 11.5, lineHeight: 17 }}
-                          >
-                            زنگ تفریح
-                          </AppText>
-                          <AppText
-                            ltr
-                            color={colors.faint}
-                            style={{ fontSize: 10, lineHeight: 15, fontVariant: ["tabular-nums"] }}
-                          >
-                            {formatClock(bell.end)} — {formatClock(next.start)}
-                          </AppText>
-                        </View>
-                        <AppText color="#a7f3d0" style={{ fontSize: 10.5, lineHeight: 15 }}>
-                          {fmtNum(gap)} دقیقه
-                        </AppText>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              })}
-            </View>
-          </Panel>
-        </Animated.View>
-
         {/* next day */}
-        <Animated.View entering={FadeInDown.duration(180).delay(80)}>
+        <Animated.View entering={FadeInDown.duration(180).delay(60)}>
           <NextDayPanel bySubject={bySubject} now={now} />
 
           <AppText

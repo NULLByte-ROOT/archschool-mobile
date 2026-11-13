@@ -4,7 +4,7 @@ import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState, type ComponentRef } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -237,6 +237,76 @@ function AttachmentTile({
         <Ionicons name="download-outline" size={16} color={colors.muted} />
       )}
     </Pressable>
+  );
+}
+
+function AssignmentHeroMedia({
+  images,
+  onImagePress,
+}: {
+  images: Attachment[];
+  onImagePress: (url: string) => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  if (images.length === 0) return null;
+
+  return (
+    <View
+      style={styles.heroMediaContainer}
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w > 0) setContainerWidth(w);
+      }}
+    >
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={(e) => {
+          if (containerWidth <= 0) return;
+          const idx = Math.round(e.nativeEvent.contentOffset.x / containerWidth);
+          setActiveIndex(Math.max(0, Math.min(idx, images.length - 1)));
+        }}
+        style={{ width: "100%", height: 260 }}
+      >
+        {images.map((img, i) => {
+          const fullUrl = resolveMediaUrl(img.file_url);
+          return (
+            <Pressable
+              key={img.id ?? i}
+              onPress={() => onImagePress(fullUrl)}
+              style={{ width: containerWidth || 340, height: 260 }}
+              accessibilityRole="button"
+              accessibilityLabel="نمایش تمام‌صفحه تصویر"
+            >
+              <Image
+                source={{ uri: fullUrl }}
+                contentFit="cover"
+                style={{ width: "100%", height: 260 }}
+              />
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {images.length > 1 ? (
+        <View style={styles.heroMediaDots}>
+          {images.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.heroMediaDot,
+                i === activeIndex && styles.heroMediaDotActive,
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -591,14 +661,25 @@ export default function AssignmentDetailScreen() {
         ? colors.warning
         : colors.muted;
 
+  const allAttachments =
+    attachmentsQuery.data && attachmentsQuery.data.length > 0
+      ? attachmentsQuery.data
+      : (assignment?.attachments ?? []);
+
+  const assignmentImageAttachments = useMemo(
+    () =>
+      allAttachments.filter((attachment) =>
+        IMAGE_FILE_RE.test(attachment.file_url || attachment.file_name)
+      ),
+    [allAttachments]
+  );
+
   // گالری تصاویر همین تکلیف: پیوست‌ها اول، بعد تصاویر کامنت‌ها.
   const viewerImages: ViewerImage[] = [
-    ...(attachmentsQuery.data ?? [])
-      .filter((attachment) => IMAGE_FILE_RE.test(attachment.file_url))
-      .map((attachment) => ({
-        src: resolveMediaUrl(attachment.file_url),
-        alt: attachment.file_name || "پیوست تکلیف",
-      })),
+    ...assignmentImageAttachments.map((attachment) => ({
+      src: resolveMediaUrl(attachment.file_url),
+      alt: attachment.file_name || "پیوست تکلیف",
+    })),
     ...comments
       .filter((message) => message.file_url && IMAGE_FILE_RE.test(message.file_url))
       .map((message) => ({
@@ -668,6 +749,12 @@ export default function AssignmentDetailScreen() {
           ) : (
             <>
               <Animated.View entering={FadeInDown.duration(180)}>
+                {assignmentImageAttachments.length > 0 ? (
+                  <AssignmentHeroMedia
+                    images={assignmentImageAttachments}
+                    onImagePress={(url) => openViewer(url)}
+                  />
+                ) : null}
                 <GlassCard glow={dueToneValue === "red" && !isDone} contentStyle={styles.hero}>
                   <View style={styles.heroTop}>
                     <View
@@ -1450,5 +1537,40 @@ const styles = StyleSheet.create({
     backgroundColor: colors.redSoft,
     borderWidth: 1,
     borderColor: "rgba(242,104,107,0.3)",
+  },
+
+  /* hero media preview */
+  heroMediaContainer: {
+    width: "100%",
+    height: 260,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    overflow: "hidden",
+    marginBottom: spacing.sm,
+    position: "relative",
+  },
+  heroMediaDots: {
+    position: "absolute",
+    bottom: 12,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+  },
+  heroMediaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.45)",
+  },
+  heroMediaDotActive: {
+    width: 16,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.white,
   },
 });

@@ -2,6 +2,8 @@ import type {
   Assignment,
   Attachment,
   ChatOverview,
+  Classroom,
+  ClassroomMember,
   LeaderboardEntry,
   LoginResponse,
   Message,
@@ -152,6 +154,61 @@ export function login(username: string, code: string): Promise<LoginResponse> {
   });
 }
 
+export function loginWithPassword(username: string, password: string): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/login", {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify({ username: username.trim(), password }),
+  });
+}
+
+export function registerWithPassword(
+  username: string,
+  password: string,
+  email?: string
+): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/register", {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify({
+      username: username.trim(),
+      password,
+      email: email?.trim() || undefined,
+    }),
+  });
+}
+
+export function loginWithGoogle(payload: {
+  email: string;
+  name?: string;
+  avatar_url?: string;
+  google_id?: string;
+}): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/google", {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify(payload),
+  });
+}
+
+export function loginAsGuest(payload?: {
+  nickname?: string;
+  device_id?: string;
+}): Promise<LoginResponse> {
+  return request<LoginResponse>("/auth/guest", {
+    method: "POST",
+    auth: false,
+    body: JSON.stringify(payload || {}),
+  });
+}
+
+export function setPassword(password: string, username?: string): Promise<User> {
+  return request<User>("/auth/set-password", {
+    method: "POST",
+    body: JSON.stringify({ password, username: username?.trim() || undefined }),
+  });
+}
+
 export function register(username: string, code: string): Promise<LoginResponse> {
   return request<LoginResponse>("/auth/register", {
     method: "POST",
@@ -216,6 +273,21 @@ export function updateNotificationPreferences(
   });
 }
 
+export function fetchPushDiagnostics(): Promise<{
+  user_id: number;
+  tokens: { token_preview: string; device_type: string; updated_at: string }[];
+  push_enabled: boolean;
+}> {
+  return request("/users/push-token");
+}
+
+export function sendTestPush(): Promise<{
+  sent: number;
+  results: { token_preview: string; status: string; error?: string; message?: string }[];
+}> {
+  return request("/users/push-token/test", { method: "POST" });
+}
+
 // ---------------------------------------------------------------------------
 // Team + stats
 // ---------------------------------------------------------------------------
@@ -250,15 +322,58 @@ export function fetchUserStats(userId: number): Promise<LeaderboardEntry> {
 }
 
 // ---------------------------------------------------------------------------
+// Classrooms
+// ---------------------------------------------------------------------------
+export function fetchMyClassrooms(): Promise<Classroom[]> {
+  return request<Classroom[]>("/classrooms/me");
+}
+
+export function createClassroom(
+  name: string,
+  description: string = ""
+): Promise<Classroom> {
+  return request<Classroom>("/classrooms", {
+    method: "POST",
+    body: JSON.stringify({ name: name.trim(), description: description.trim() }),
+  });
+}
+
+export function joinClassroom(code: string): Promise<Classroom> {
+  return request<Classroom>("/classrooms/join", {
+    method: "POST",
+    body: JSON.stringify({ code: code.trim().toUpperCase() }),
+  });
+}
+
+export function fetchClassroomDetails(id: number): Promise<Classroom> {
+  return request<Classroom>(`/classrooms/${id}`);
+}
+
+export function fetchClassroomMembers(id: number): Promise<ClassroomMember[]> {
+  return request<ClassroomMember[]>(`/classrooms/${id}/members`);
+}
+
+export function removeMemberFromClassroom(
+  classroomId: number,
+  userId: number
+): Promise<void> {
+  return request<void>(`/classrooms/${classroomId}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Assignments
 // ---------------------------------------------------------------------------
 export function fetchAssignments(params?: {
   completed?: boolean;
   course?: string;
+  classroom_id?: number;
 }): Promise<Assignment[]> {
   const search: string[] = [];
   if (params?.completed !== undefined) search.push(`completed=${params.completed}`);
   if (params?.course) search.push(`course=${encodeURIComponent(params.course)}`);
+  if (params?.classroom_id !== undefined) search.push(`classroom_id=${params.classroom_id}`);
   return request<Assignment[]>(`/assignments/${search.length ? `?${search.join("&")}` : ""}`);
 }
 
@@ -660,4 +775,7 @@ export const qk = {
   users: ["users"] as const,
   team: ["team"] as const,
   notificationPrefs: ["notification-prefs"] as const,
+  classrooms: ["classrooms"] as const,
+  classroom: (id: number) => ["classroom", id] as const,
+  classroomMembers: (id: number) => ["classroom-members", id] as const,
 };

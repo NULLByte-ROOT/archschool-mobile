@@ -4,5 +4,5 @@ import { useAuthStore } from "@/store/auth";
 
 export default function Index() {
   const token = useAuthStore((state) => state.token);
-  return <Redirect href={token ? "/home" : "/login"} />;
+  return <Redirect href={token ? "/home" : "/onboarding"} />;
 }

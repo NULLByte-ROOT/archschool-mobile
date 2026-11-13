@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
@@ -19,12 +20,14 @@ import {
   ApiError,
   deleteAssignment,
   fetchAssignments,
+  fetchAttachments,
   fetchOverdueAssignments,
   fetchUserStats,
   qk,
+  resolveMediaUrl,
   toggleAssignment,
 } from "@/api/client";
-import type { Assignment, LeaderboardEntry } from "@/api/types";
+import type { Assignment, Attachment, LeaderboardEntry } from "@/api/types";
 import { AreaChart, Donut, SegmentedBar } from "@/components/charts";
 import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
 import { Screen } from "@/components/Screen";
@@ -191,6 +194,77 @@ function ToggleButton({
 /* Assignment card                                                    */
 /* ------------------------------------------------------------------ */
 
+const IMAGE_FILE_RE = /\.(png|jpe?g|webp|gif|heic|heif)(\?|$)/i;
+
+function AssignmentMediaPreview({
+  attachments,
+  onPress,
+}: {
+  attachments: Attachment[];
+  onPress: () => void;
+}) {
+  const images = useMemo(
+    () => attachments.filter((a) => IMAGE_FILE_RE.test(a.file_name || a.file_url)),
+    [attachments]
+  );
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [cardWidth, setCardWidth] = useState(0);
+
+  if (images.length === 0) return null;
+
+  return (
+    <View
+      style={styles.cardMediaWrap}
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w > 0) setCardWidth(w);
+      }}
+    >
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={(e) => {
+          if (cardWidth <= 0) return;
+          const idx = Math.round(e.nativeEvent.contentOffset.x / cardWidth);
+          setActiveIndex(Math.max(0, Math.min(idx, images.length - 1)));
+        }}
+        style={{ width: "100%", height: 180 }}
+      >
+        {images.map((img, i) => (
+          <Pressable
+            key={img.id ?? i}
+            onPress={onPress}
+            style={{ width: cardWidth || 300, height: 180 }}
+          >
+            <Image
+              source={{ uri: resolveMediaUrl(img.file_url) }}
+              contentFit="cover"
+              style={{ width: "100%", height: 180 }}
+            />
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {images.length > 1 ? (
+        <View style={styles.cardMediaDots}>
+          {images.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.cardMediaDot,
+                i === activeIndex && styles.cardMediaDotActive,
+              ]}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function AssignmentCard({
   assignment,
   view,
@@ -214,6 +288,14 @@ function AssignmentCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { data: remoteAttachments } = useQuery({
+    queryKey: qk.attachments(assignment.id),
+    queryFn: () => fetchAttachments(assignment.id),
+    staleTime: 60_000,
+    enabled: !assignment.attachments,
+  });
+  const attachments = assignment.attachments ?? remoteAttachments ?? [];
+
   const done = assignment.is_completed_by_me;
   const countdown = done
     ? null
@@ -295,6 +377,7 @@ function AssignmentCard({
       >
         <Corners />
         <View style={[styles.gridEdge, { backgroundColor: TONE_DOT[tone] }]} />
+        <AssignmentMediaPreview attachments={attachments} onPress={onOpen} />
 
         <View style={styles.gridHead}>
           <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 8, flexShrink: 1 }}>
@@ -381,6 +464,7 @@ function AssignmentCard({
     >
       <Corners />
       <View style={[styles.listEdge, { backgroundColor: TONE_DOT[tone] }]} />
+      <AssignmentMediaPreview attachments={attachments} onPress={onOpen} />
 
       <View style={styles.listTop}>
         <IconTile
@@ -2029,5 +2113,38 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(26,11,13,0.96)",
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+
+  /* assignment media preview */
+  cardMediaWrap: {
+    width: "100%",
+    height: 180,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.25)",
+    overflow: "hidden",
+    marginBottom: 10,
+    position: "relative",
+  },
+  cardMediaDots: {
+    position: "absolute",
+    bottom: 8,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 5,
+  },
+  cardMediaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.40)",
+  },
+  cardMediaDotActive: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.white,
   },
 });

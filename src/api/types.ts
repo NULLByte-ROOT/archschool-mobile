@@ -6,6 +6,9 @@ export interface User {
   is_admin: boolean;
   role: Role;
   is_active: boolean;
+  email?: string | null;
+  is_guest?: boolean;
+  must_set_password?: boolean;
   avatar_url?: string | null;
   bio?: string;
   last_seen?: string | null;
@@ -77,6 +80,7 @@ export interface Assignment {
   creator_username: string | null;
   completed_by_users: CompletedByUser[];
   is_completed_by_me: boolean;
+  attachments?: Attachment[];
   created_at: string;
   updated_at: string;
 }
@@ -182,4 +186,23 @@ export interface LoginResponse {
   access_token: string;
   token_type: string;
   user: User;
+}
+
+export interface ClassroomMember {
+  user_id: number;
+  username: string;
+  avatar_url?: string | null;
+  role: string;
+  joined_at: string;
+}
+
+export interface Classroom {
+  id: number;
+  name: string;
+  code: string;
+  description: string;
+  creator_id?: number | null;
+  created_at: string;
+  member_count: number;
+  my_role?: string | null;
 }

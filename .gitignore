@@ -48,3 +48,8 @@ dist-test/
 
 # local agent settings
 .claude/
+
+# Firebase admin credentials
+*-firebase-adminsdk-*.json
+*.service-account.json
+

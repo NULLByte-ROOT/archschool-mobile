@@ -22,6 +22,7 @@ import {
   deleteMyAvatar,
   fetchNotificationPreferences,
   qk,
+  sendTestPush,
   updateMe,
   updateNotificationPreferences,
   uploadFile,
@@ -191,6 +192,31 @@ export default function ProfileScreen() {
       );
     } finally {
       setSavingPref(null);
+    }
+  };
+
+  const [testingPush, setTestingPush] = useState(false);
+  const handleTestPush = async () => {
+    setTestingPush(true);
+    try {
+      const res = await sendTestPush();
+      const first = res.results?.[0];
+      if (first?.status === "ok") {
+        Alert.alert(
+          "ارسال موفق اعلان",
+          "یک نوتیفیکیشن آزمایشی با موفقیت به دستگاه شما ارسال شد. لطفاً نوار وضعیت بالای گوشی را بررسی کنید."
+        );
+      } else {
+        Alert.alert(
+          "نتیجه بررسی سرور",
+          first?.message || first?.error || "پاسخ از سرویس پوش اکسپو دریافت شد اما پیام روی دستگاه تایید نشد."
+        );
+      }
+    } catch (testErr: unknown) {
+      const msg = testErr instanceof ApiError ? testErr.message : "خطا در برقراری ارتباط با سرور برای تست اعلان.";
+      Alert.alert("خطا در تست اعلان", msg);
+    } finally {
+      setTestingPush(false);
     }
   };
 
@@ -509,6 +535,32 @@ export default function ProfileScreen() {
                 busy={savingPref === "deadlines"}
                 onToggle={() => void togglePref("deadlines")}
               />
+
+              <Pressable
+                onPress={() => void handleTestPush()}
+                disabled={testingPush}
+                style={({ pressed }) => [
+                  styles.ghostButton,
+                  { marginTop: 12, justifyContent: "center" },
+                  pressed && { opacity: 0.8 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="ارسال اعلان آزمایشی"
+              >
+                {testingPush ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="paper-plane-outline" size={14} color={colors.white} />
+                    <AppText
+                      color={colors.white}
+                      style={{ fontFamily: fonts.semibold, fontSize: 11.5 }}
+                    >
+                      ارسال اعلان آزمایشی به این گوشی
+                    </AppText>
+                  </>
+                )}
+              </Pressable>
             </>
           ) : (
             <Pressable

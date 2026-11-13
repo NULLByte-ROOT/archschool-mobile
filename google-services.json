@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "172815427389",
+    "project_id": "archschool-d7a5d",
+    "storage_bucket": "archschool-d7a5d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:172815427389:android:e3279ca7ef727031ea4754",
+        "android_client_info": {
+          "package_name": "archschool.vidxsepehr.ir"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhNfkdCbobDdr6GvVLMxMj-OSKSA8Er0M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

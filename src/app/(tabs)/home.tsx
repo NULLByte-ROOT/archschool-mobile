@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Haptics from "expo-haptics";
+import * as SecureStore from "expo-secure-store";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,11 +25,13 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  ApiError,
   fetchAssignments,
   fetchChatOverview,
   fetchOverview,
   fetchTeam,
   qk,
+  toggleAssignment,
 } from "@/api/client";
 import type { Assignment, DailyActivity, LeaderboardEntry, Message } from "@/api/types";
 import { SchoolStatusCard } from "@/components/SchoolStatusCard";
@@ -54,6 +59,7 @@ import {
   todayLabel,
 } from "@/lib/format";
 import { canChat } from "@/lib/roles";
+import { subjectName } from "@/lib/subjects";
 import { useAuthStore } from "@/store/auth";
 import {
   colors,
@@ -338,6 +344,147 @@ function StreakHero({
         ) : null}
       </View>
     </Pressable>
+  );
+}
+
+function useAcknowledgedOverdue(userId?: number) {
+  const [acknowledged, setAcknowledged] = useState<number[]>([]);
+  const key = `archschool_acked_overdue_${userId ?? 0}`;
+
+  useEffect(() => {
+    if (!userId) return;
+    SecureStore.getItemAsync(key)
+      .then((val) => {
+        if (val) {
+          try {
+            setAcknowledged(JSON.parse(val));
+          } catch {}
+        }
+      })
+      .catch(() => undefined);
+  }, [key, userId]);
+
+  const acknowledge = (id: number) => {
+    setAcknowledged((prev) => {
+      const next = prev.includes(id) ? prev : [...prev, id];
+      void SecureStore.setItemAsync(key, JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
+  };
+
+  const acknowledgeAll = (ids: number[]) => {
+    setAcknowledged((prev) => {
+      const next = Array.from(new Set([...prev, ...ids]));
+      void SecureStore.setItemAsync(key, JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
+  };
+
+  return { acknowledged, acknowledge, acknowledgeAll };
+}
+
+function OverduePromptSection({
+  items,
+  onConfirmDone,
+  onConfirmUndone,
+  onOpen,
+}: {
+  items: Assignment[];
+  onConfirmDone: (id: number) => void;
+  onConfirmUndone: (id: number) => void;
+  onOpen: (id: number) => void;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <Animated.View entering={FadeInDown.duration(200)} style={{ marginBottom: 16 }}>
+      <Panel
+        corners
+        cornerTone="rgba(239,68,68,0.30)"
+        style={{
+          borderColor: "rgba(239,68,68,0.32)",
+          backgroundColor: "rgba(24,10,12,0.92)",
+        }}
+        contentStyle={st.panelPad}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={["rgba(239,68,68,0.14)", "rgba(239,68,68,0)"]}
+          start={{ x: 1, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+
+        <PanelHeader
+          label="// OVERDUE CHECK"
+          title="تکالیف مهلت‌گذشته"
+          icon="alarm"
+          accessory={
+            <View style={st.overdueBadge}>
+              <AppText color="#fca5a5" style={{ fontFamily: fonts.bold, fontSize: 10 }}>
+                {fmtNum(items.length)} تکلیف
+              </AppText>
+            </View>
+          }
+        />
+
+        <AppText color={colors.textSoft} style={{ fontSize: 12, lineHeight: 19, marginBottom: 12 }}>
+          مهلت این تکلیف گذشته، آیا انجام داده بودی و تیک نزدی؟
+        </AppText>
+
+        <View style={{ gap: 10 }}>
+          {items.map((item) => (
+            <View key={item.id} style={st.overdueItem}>
+              <Pressable
+                onPress={() => onOpen(item.id)}
+                style={{ flex: 1, minWidth: 0, gap: 2 }}
+                accessibilityRole="button"
+                accessibilityLabel={item.title}
+              >
+                <AppText
+                  numberOfLines={1}
+                  color={colors.white}
+                  style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 20 }}
+                >
+                  {item.title}
+                </AppText>
+                <AppText numberOfLines={1} color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
+                  {subjectName(item.subject_id, item.course) || "عمومی"} · {formatDue(item.due_date)}
+                </AppText>
+              </Pressable>
+
+              <View style={st.overdueActions}>
+                <Pressable
+                  onPress={() => onConfirmDone(item.id)}
+                  style={st.overdueBtnYes}
+                  hitSlop={4}
+                  accessibilityRole="button"
+                  accessibilityLabel="بله انجام دادم"
+                >
+                  <Ionicons name="checkmark-circle" size={14} color="#6ee7b7" />
+                  <AppText color="#6ee7b7" style={{ fontFamily: fonts.bold, fontSize: 11 }}>
+                    انجام دادم
+                  </AppText>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => onConfirmUndone(item.id)}
+                  style={st.overdueBtnNo}
+                  hitSlop={4}
+                  accessibilityRole="button"
+                  accessibilityLabel="خیر انجام ندادم"
+                >
+                  <Ionicons name="close-circle-outline" size={14} color={colors.faint} />
+                  <AppText color={colors.faint} style={{ fontFamily: fonts.medium, fontSize: 11 }}>
+                    نه
+                  </AppText>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+      </Panel>
+    </Animated.View>
   );
 }
 
@@ -984,18 +1131,45 @@ export default function DashboardScreen() {
   };
 
   const me = overview.data?.me;
+
+  const queryClient = useQueryClient();
+  const toggleMutation = useMutation({
+    mutationFn: (id: number) => toggleAssignment(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: qk.assignments });
+      void queryClient.invalidateQueries({ queryKey: qk.overview });
+      void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+      void queryClient.invalidateQueries({ queryKey: qk.overdue });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    },
+    onError: (err) => {
+      Alert.alert("خطا", err instanceof ApiError ? err.message : "تغییر وضعیت انجام نشد.");
+    },
+  });
+
+  const { acknowledged, acknowledge, acknowledgeAll } = useAcknowledgedOverdue(user?.id);
+
+  const isItemOverdue = (item: Assignment): boolean => {
+    const countdown = dueCountdown(item.due_date, now, bells, item.subject_id);
+    if (countdown) return countdown.overdue;
+    const due = parseDue(item.due_date);
+    return due ? due.getTime() <= now : false;
+  };
+
+  // Only active assignments (uncompleted and deadline has not passed)
   const pending = useMemo(() => {
     const alignedDue = (item: Assignment) =>
       dueCountdown(item.due_date, now, bells, item.subject_id)?.alignedDueMs ??
       parseDue(item.due_date)?.getTime() ??
       Number.POSITIVE_INFINITY;
     return (assignments.data ?? [])
-      .filter((item) => !item.is_completed_by_me)
+      .filter((item) => !item.is_completed_by_me && !isItemOverdue(item))
       .map((item) => ({ item, at: alignedDue(item) }))
       .sort((a, b) => a.at - b.at)
       .map((entry) => entry.item);
   }, [assignments.data, now, bells]);
 
+  // Urgent: active pending assignments whose deadline is within 48h and NOT overdue
   const urgent = useMemo(
     () =>
       pending.filter((item) => {
@@ -1005,10 +1179,27 @@ export default function DashboardScreen() {
           bells,
           item.subject_id
         );
-        return Boolean(countdown && (countdown.urgent || countdown.overdue));
+        return Boolean(countdown && countdown.urgent && !countdown.overdue);
       }),
     [pending, now, bells]
   );
+
+  const overdueAssignments = useMemo(() => {
+    return (assignments.data ?? []).filter(
+      (item) => !item.is_completed_by_me && isItemOverdue(item)
+    );
+  }, [assignments.data, now, bells]);
+
+  const unconfirmedOverdue = useMemo(() => {
+    return overdueAssignments.filter((item) => !acknowledged.includes(item.id));
+  }, [overdueAssignments, acknowledged]);
+
+  // If 5 or more overdue uncompleted assignments accumulate, auto-mark all as not done
+  useEffect(() => {
+    if (unconfirmedOverdue.length >= 5) {
+      acknowledgeAll(unconfirmedOverdue.map((item) => item.id));
+    }
+  }, [unconfirmedOverdue, acknowledgeAll]);
 
   const peerName = (peerId: number): string =>
     team.data?.find((entry) => entry.id === peerId)?.username ?? "همکلاسی";
@@ -1106,6 +1297,21 @@ export default function DashboardScreen() {
             </Panel>
           </View>
         )}
+
+        {/* Overdue tasks check right below streak */}
+        {unconfirmedOverdue.length > 0 && unconfirmedOverdue.length < 5 ? (
+          <OverduePromptSection
+            items={unconfirmedOverdue}
+            onConfirmDone={(id) => {
+              toggleMutation.mutate(id);
+              acknowledge(id);
+            }}
+            onConfirmUndone={(id) => {
+              acknowledge(id);
+            }}
+            onOpen={(id) => router.push(`/assignment/${id}`)}
+          />
+        ) : null}
 
         <Animated.View entering={FadeInDown.duration(180).delay(50)} style={{ marginBottom: 16 }}>
           <AssignmentsCta
@@ -1494,5 +1700,51 @@ const st = StyleSheet.create({
   trendBarActive: {
     borderWidth: 1,
     borderColor: colors.white,
+  },
+  overdueBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: "rgba(239,68,68,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.30)",
+  },
+  overdueItem: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+  overdueActions: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+  },
+  overdueBtnYes: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(16,185,129,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.35)",
+  },
+  overdueBtnNo: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 });

@@ -40,18 +40,23 @@ const queryClient = new QueryClient({
 
 function AuthGate({ ready }: { ready: boolean }) {
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (!ready) return;
-    const onLogin = segments[0] === "login";
-    if (!token && !onLogin) {
-      router.replace("/login");
-    } else if (token && onLogin) {
-      router.replace("/home");
+    const isAuthRoute = segments[0] === "login" || segments[0] === "onboarding";
+    if (!token && !isAuthRoute) {
+      router.replace("/onboarding");
+    } else if (token && isAuthRoute) {
+      if (user?.must_set_password) {
+        router.replace("/onboarding/setup-account");
+      } else {
+        router.replace("/home");
+      }
     }
-  }, [ready, router, segments, token]);
+  }, [ready, router, segments, token, user?.must_set_password]);
 
   return null;
 }
@@ -92,6 +97,11 @@ function AppShell({ ready }: { ready: boolean }) {
         }}
       >
         <Stack.Screen name="index" />
+        <Stack.Screen name="onboarding/index" options={{ animation: "fade" }} />
+        <Stack.Screen name="onboarding/auth" options={{ animation: "slide_from_left" }} />
+        <Stack.Screen name="onboarding/setup-account" options={{ animation: "slide_from_left" }} />
+        <Stack.Screen name="onboarding/setup-schedule" options={{ animation: "slide_from_left" }} />
+        <Stack.Screen name="onboarding/setup-class" options={{ animation: "slide_from_left" }} />
         <Stack.Screen name="login" options={{ animation: "fade" }} />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen

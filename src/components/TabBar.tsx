@@ -8,11 +8,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
-  cancelAnimation,
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSequence,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
@@ -29,15 +27,11 @@ import {
 } from "@/theme/tokens";
 
 /**
- * Floating "liquid glass" tab bar (iOS 26 style).
+ * Floating "liquid glass" tab bar.
  *
- * The selection is a glass bubble that sits *on top* of the bar. It is placed
- * from the **measured** rect of the selected tab (never from an assumed index
- * order), so it lines up on both LTR and RTL devices and can never drift
- * outside the pill.
- *
- * Dragging the bubble stretches it like jelly, and releasing snaps it to the
- * nearest tab and lets it wobble for ~2s.
+ * The selection is a glass bubble that sits smoothly behind the icons and
+ * text of the active tab. It is positioned based on the measured rect of each
+ * tab so it aligns symmetrically in both LTR and RTL directions.
  */
 
 const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName }> = {
@@ -48,19 +42,12 @@ const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName
   profile: { label: "پروفایل", icon: "person-circle-outline", activeIcon: "person-circle" },
 };
 
-/**
- * The bubble is a wide horizontal ellipse: slightly wider than one tab so it
- * reads as a liquid lens instead of a circle, and it stays inside the pill.
- */
 const BUBBLE_INSET = 6;
-const BUBBLE_EXTRA_WIDTH = 16;
-const BUBBLE_MIN_WIDTH = 68;
-const BUBBLE_MAX_WIDTH = 94;
 const LOZENGE_TOP = 10;
 const LOZENGE_HEIGHT = tabBarHeight - LOZENGE_TOP * 2;
 
-/** Bouncy spring — the bubble overshoots a little instead of gliding flat. */
-const SPRING = { damping: 13, stiffness: 190, mass: 0.9 } as const;
+/** Fluid spring for organic, smooth bubble movement without jitter. */
+const SPRING = { damping: 17, stiffness: 210, mass: 0.8 } as const;
 
 type Rect = { x: number; width: number };
 
@@ -183,15 +170,11 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     ? Math.max(...measured.map((rect) => rect.x + rect.width)) +
       Math.min(...measured.map((rect) => rect.x))
     : 0;
-  const bubbleWidth = barWidth
-    ? Math.min(
-        Math.max(itemWidth + BUBBLE_EXTRA_WIDTH, BUBBLE_MIN_WIDTH),
-        BUBBLE_MAX_WIDTH,
-        barWidth - BUBBLE_INSET * 2
-      )
-    : 0;
+  // Sized to comfortably fit the tab content with balanced margins on all sides
+  const bubbleWidth = itemWidth > 0 ? Math.max(itemWidth - 6, 56) : 60;
 
   const clampLeft = (left: number) => {
+    if (barWidth <= 0) return left;
     const maxLeft = Math.max(
       barWidth - bubbleWidth - BUBBLE_INSET,
       BUBBLE_INSET
@@ -199,10 +182,10 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     return Math.min(maxLeft, Math.max(BUBBLE_INSET, left));
   };
 
-  // Every tab's bubble position (left edge), in the bar's coordinate space.
+  // Every tab's bubble position (left edge), exactly centered on the tab
   const targets = rects.map((rect) =>
     rect
-      ? clampLeft(rect.x + rect.width / 2 - bubbleWidth / 2)
+      ? clampLeft(rect.x + (rect.width - bubbleWidth) / 2)
       : Number.NaN
   );
   const centers = rects.map((rect) =>
@@ -216,10 +199,10 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
 
   const lozengeX = useSharedValue(0);
   const committedX = useSharedValue(0);
-  const dragOriginX = useSharedValue(0);
+  const bubbleStartX = useSharedValue(0);
   const dragLift = useSharedValue(0);
   const stretch = useSharedValue(0);
-  const jelly = useSharedValue(0);
+  const bubbleOpacity = useSharedValue(0);
   const tickIndex = useSharedValue(-1);
   const measuredOnce = useRef(false);
   const suppressPressUntil = useRef(0);
@@ -242,46 +225,26 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     }
   };
 
-  /** A loose, decaying wobble — the "let go and it jiggles" feel. */
-  const startJelly = (strength: number) => {
-    const s = Math.max(0.25, Math.min(1, strength));
-    cancelAnimation(jelly);
-    jelly.value = 0;
-    jelly.value = withSequence(
-      withTiming(1 * s, { duration: 110 }),
-      withTiming(-0.82 * s, { duration: 170 }),
-      withTiming(0.64 * s, { duration: 190 }),
-      withTiming(-0.48 * s, { duration: 230 }),
-      withTiming(0.34 * s, { duration: 270 }),
-      withTiming(-0.22 * s, { duration: 310 }),
-      withTiming(0.12 * s, { duration: 350 }),
-      withTiming(-0.06 * s, { duration: 380 }),
-      withTiming(0, { duration: 430 })
-    );
-  };
-
   useEffect(() => {
     if (!ready || !Number.isFinite(targetX)) return;
     committedX.value = targetX;
     if (!measuredOnce.current) {
       lozengeX.value = targetX;
+      bubbleOpacity.value = withTiming(1, { duration: 180 });
       measuredOnce.current = true;
       return;
     }
     lozengeX.value = withSpring(targetX, SPRING);
-    startJelly(0.7);
-    // `startJelly` only touches shared values, so it is safe to omit here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, targetX, lozengeX, committedX]);
+  }, [ready, targetX, lozengeX, committedX, bubbleOpacity]);
 
   const lozengeStyle = useAnimatedStyle(() => {
     const lift = dragLift.value;
-    const wobble = jelly.value;
     return {
+      opacity: bubbleOpacity.value,
       transform: [
-        { translateX: lozengeX.value + wobble * 2 },
-        { scaleX: 1 + stretch.value + wobble * 0.055 + lift * 0.02 },
-        { scaleY: 1 - stretch.value * 0.55 - wobble * 0.04 },
+        { translateX: lozengeX.value },
+        { scaleX: 1 + stretch.value + lift * 0.03 },
+        { scaleY: 1 - stretch.value * 0.35 - lift * 0.02 },
       ],
     };
   });
@@ -312,10 +275,10 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
    * it owns navigation from that point and the tap Pressable must not fire a
    * second time when the finger lifts.
    */
-  const finishDrag = (index: number, velocityX: number) => {
+  const finishDrag = (index: number, _velocityX: number) => {
     suppressPressUntil.current = Date.now() + 180;
     dragLift.value = withTiming(0, { duration: 160 });
-    stretch.value = withTiming(0, { duration: 220 });
+    stretch.value = withTiming(0, { duration: 200 });
     const x = targets[index];
     if (!Number.isFinite(x)) return;
     if (index === state.index) {
@@ -324,7 +287,6 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
     } else {
       selectTab(index);
     }
-    startJelly(0.55 + Math.min(0.45, Math.abs(velocityX) / 3000));
   };
 
   /**
@@ -333,7 +295,7 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
    */
   const snapBack = () => {
     dragLift.value = withTiming(0, { duration: 160 });
-    stretch.value = withTiming(0, { duration: 220 });
+    stretch.value = withTiming(0, { duration: 200 });
     lozengeX.value = withSpring(committedX.value, SPRING);
   };
 
@@ -354,35 +316,23 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
 
   const drag = Gesture.Pan()
     .activeOffsetX([-10, 10])
-    .onBegin((event) => {
-      // Put the glass lens under the finger the moment it touches the bar —
-      // not only after a horizontal drag activates or a tab is selected.
-      cancelAnimation(jelly);
-      jelly.value = 0;
-      if (!ready) return;
-      const left = Math.min(
-        maxTarget,
-        Math.max(minTarget, event.x - bubbleWidth / 2)
-      );
-      lozengeX.value = left;
-      dragOriginX.value = left;
-    })
     .onStart(() => {
+      bubbleStartX.value = lozengeX.value;
       dragLift.value = withTiming(1, { duration: 120 });
-      stretch.value = withTiming(0.03, { duration: 140 });
+      stretch.value = withTiming(0.04, { duration: 140 });
       runOnJS(tick)();
     })
     .onUpdate((event) => {
       if (!ready) return;
       const next = Math.min(
         maxTarget,
-        Math.max(minTarget, dragOriginX.value + event.translationX)
+        Math.max(minTarget, bubbleStartX.value + event.translationX)
       );
       lozengeX.value = next;
 
-      // Stretch more the faster the finger moves, so the bubble trails.
-      const amount = Math.min(0.16, Math.abs(event.velocityX) / 22000);
-      stretch.value = withTiming(0.03 + amount, { duration: 90 });
+      // Stretch slightly when dragging fast
+      const amount = Math.min(0.08, Math.abs(event.velocityX) / 22000);
+      stretch.value = withTiming(0.04 + amount, { duration: 80 });
 
       const index = indexAt(next + bubbleWidth / 2);
       if (index !== tickIndex.value) {
@@ -431,18 +381,19 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
 
         <GestureDetector gesture={drag}>
           <View style={styles.bar}>
-            {/* Back layer: the glass body of the bubble, behind the icons. */}
+            {/* The liquid glass bubble: positioned cleanly behind the icons & labels */}
             {ready ? (
               <Animated.View
                 pointerEvents="none"
                 style={[styles.lozenge, { width: bubbleWidth }, lozengeStyle]}
               >
                 <LinearGradient
-                  colors={["rgba(255,255,255,0.20)", "rgba(255,255,255,0.06)"]}
+                  colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.06)"]}
                   start={{ x: 0.5, y: 0 }}
                   end={{ x: 0.5, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
+                <View style={styles.lozengeEdge} />
               </Animated.View>
             ) : null}
 
@@ -476,27 +427,6 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
                 );
               })}
             </View>
-
-            {/* Front layer: specular rim above the icons, so the glass wraps
-                them instead of sitting invisibly behind them. */}
-            {ready ? (
-              <Animated.View
-                pointerEvents="none"
-                style={[styles.lozengeRim, { width: bubbleWidth }, lozengeStyle]}
-              >
-                <View style={styles.lozengeEdge} />
-                <LinearGradient
-                  colors={[
-                    "rgba(255,255,255,0.18)",
-                    "rgba(255,255,255,0.03)",
-                    "rgba(255,255,255,0)",
-                  ]}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                />
-              </Animated.View>
-            ) : null}
           </View>
         </GestureDetector>
       </View>
@@ -548,8 +478,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 8,
   },
-  /* The bubble: explicit `left: 0` so it can never inherit a static position
-     from the row (that was pushing it outside the pill on the edge tabs). */
+  /* The bubble: explicit `left: 0` so it positions accurately in the bar. */
   lozenge: {
     position: "absolute",
     left: 0,
@@ -557,18 +486,10 @@ const styles = StyleSheet.create({
     height: LOZENGE_HEIGHT,
     borderRadius: LOZENGE_HEIGHT / 2,
     overflow: "hidden",
-    backgroundColor: "rgba(255,255,255,0.10)",
-    boxShadow: "0px 10px 24px -8px rgba(0,0,0,0.70)",
-  },
-  lozengeRim: {
-    position: "absolute",
-    left: 0,
-    top: LOZENGE_TOP,
-    height: LOZENGE_HEIGHT,
-    borderRadius: LOZENGE_HEIGHT / 2,
-    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.26)",
+    borderColor: "rgba(255,255,255,0.22)",
+    backgroundColor: "rgba(255,255,255,0.08)",
+    boxShadow: "0px 8px 22px -6px rgba(0,0,0,0.65)",
   },
   lozengeEdge: {
     position: "absolute",
@@ -576,7 +497,7 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     height: 1,
-    backgroundColor: "rgba(255,255,255,0.34)",
+    backgroundColor: "rgba(255,255,255,0.36)",
   },
   item: {
     flex: 1,
