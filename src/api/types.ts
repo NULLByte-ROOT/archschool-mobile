@@ -14,6 +14,7 @@ export interface User {
   last_seen?: string | null;
   created_at: string;
   code?: string;
+  google_id?: string | null;
 }
 
 export interface PublicUser {

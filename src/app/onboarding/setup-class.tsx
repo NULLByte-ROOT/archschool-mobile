@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,14 +13,19 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown, FadeInUp } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { createClassroom, joinClassroom } from "@/api/client";
-import { ThreeDCore } from "@/components/ThreeDCore";
+import { ThreeDFullScene } from "@/components/ThreeDFullScene";
 import { offlineDb } from "@/lib/offlineDb";
 import { colors } from "@/theme/tokens";
 
 export default function SetupClass() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const topPadding = Math.max(insets.top, 24) + 16;
+  const bottomPadding = Math.max(insets.bottom, 16) + 20;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +52,7 @@ export default function SetupClass() {
       await offlineDb.setActiveRoomId(room.id);
       await offlineDb.setSoloMode(false);
       setShowCreateModal(false);
-      router.replace("/home");
+      router.replace("/(tabs)/home");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "خطا در ایجاد کلاس");
     } finally {
@@ -70,7 +74,7 @@ export default function SetupClass() {
       await offlineDb.setActiveRoomId(room.id);
       await offlineDb.setSoloMode(false);
       setShowJoinModal(false);
-      router.replace("/home");
+      router.replace("/(tabs)/home");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "کد دعوت نامعتبر است");
     } finally {
@@ -83,26 +87,28 @@ export default function SetupClass() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     await offlineDb.setSoloMode(true);
     await offlineDb.setActiveRoomId(null);
-    router.replace("/home");
+    router.replace("/(tabs)/home");
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={[styles.safe, { paddingTop: topPadding, paddingBottom: bottomPadding }]}>
       <View style={styles.container}>
         {/* Top Header */}
         <Animated.View entering={FadeInDown.delay(100)} style={styles.header}>
           <View style={styles.tagBadge}>
             <Text style={styles.tagText}>گام نهایی</Text>
           </View>
-          <Text style={styles.headerTitle}>محیط همکاری و رقابت</Text>
+          <Text style={styles.headerTitle}>محیط همکاری و رقابت کلاسی</Text>
         </Animated.View>
 
         {/* 3D Masterpiece Canvas */}
         <View style={styles.canvasContainer}>
-          <ThreeDCore stage={2} interactive={true} />
-          <Text style={styles.dragHint}>
-            <Ionicons name="sparkles" size={12} color={colors.emerald} /> لمس کنید و بچرخانید
-          </Text>
+          <ThreeDFullScene type={2} />
+          <View style={styles.dragHintBox}>
+            <Text style={styles.dragHint}>
+              <Ionicons name="sparkles" size={12} color={colors.emerald} /> برای چرخش لمس کنید و بچرخانید
+            </Text>
+          </View>
         </View>
 
         {/* Informative Card */}
@@ -266,7 +272,7 @@ export default function SetupClass() {
           </View>
         </Modal>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -308,6 +314,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     maxHeight: 290,
+    position: "relative",
+  },
+  dragHintBox: {
+    position: "absolute",
+    bottom: -12,
+    alignItems: "center",
   },
   dragHint: {
     fontFamily: "Vazirmatn_400Regular",

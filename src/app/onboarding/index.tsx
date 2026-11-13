@@ -12,9 +12,6 @@ import {
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Animated, {
-  FadeIn,
-  FadeInDown,
-  FadeInUp,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -33,31 +30,31 @@ const { width, height } = Dimensions.get("window");
 const SLIDES = [
   {
     type: 0 as const,
-    badge: "// ۰۱ · هسته هوشمند",
-    subtitle: "سازماندهی فوق‌پیشرفته و هوشمند",
-    title: "مدیریت یکپارچه درس‌ها و تکالیف",
+    badge: "// ۰۱ · هسته هوشمند تکالیف",
+    subtitle: "سازماندهی مدرن تحصیلی",
+    title: "مدیریت یکپارچه درس‌ها و سررسیدها",
     description:
-      "تمام تکالیف، جزوات، پیوست‌ها و سررسیدهای درسی را در یک فضای هوشمند، شیک و همیشه در دسترس مدیریت کن.",
+      "تمام تکالیف، جزوه‌ها، پیوست‌ها و موعدهای درسی را در یک فضای هوشمند، شیک و همیشه در دسترس پیگیری کن.",
     accent: "#38BDF8",
     gradient: ["#0284C7", "#38BDF8"] as const,
   },
   {
     type: 1 as const,
-    badge: "// ۰۲ · رادار زمان",
+    badge: "// ۰۲ · رادار زمان و زنگ‌ها",
     subtitle: "تایمرهای دقیق و زنگ تفریح",
     title: "دیدبان زنده زنگ‌ها و تایم‌لاین",
     description:
-      "شمارش معکوس بلادرنگ برای پایان زنگ‌ها، مدیریت زنگ‌های تفریح و جدول برنامه هفتگی بدون هیچ سردرگمی.",
+      "شمارش معکوس بلادرنگ برای پایان زنگ‌های کلاس و تفریح؛ جدول هفتگی مدرسه بدون هیچ سردرگمی و استرس.",
     accent: "#FBBF24",
     gradient: ["#D97706", "#FBBF24"] as const,
   },
   {
     type: 2 as const,
-    badge: "// ۰۳ · لیگ کلاسی",
+    badge: "// ۰۳ · لیگ کلاسی و رقابت",
     subtitle: "استریک روزانه و لیدربورد",
     title: "رقابت تیمی، استریک و لیدربورد",
     description:
-      "با دوستانت در کلاس رقابت کن، استریک روزانه ثبت کن و جایگاهت را در صدر جدول برترین‌های مدرسه تثبیت کن.",
+      "با دوستانت در کلاس رقابت کن، استریک انجام روزانه تکالیف بساز و جایگاهت را در صدر جدول برترین‌های کلاس ثبت کن.",
     accent: "#34D399",
     gradient: ["#059669", "#34D399"] as const,
   },
@@ -69,8 +66,8 @@ function ScrollHint({ accent }: { accent: string }) {
   React.useEffect(() => {
     bounce.value = withRepeat(
       withSequence(
-        withTiming(8, { duration: 800 }),
-        withTiming(0, { duration: 800 })
+        withTiming(8, { duration: 750 }),
+        withTiming(0, { duration: 750 })
       ),
       -1,
       true
@@ -84,7 +81,7 @@ function ScrollHint({ accent }: { accent: string }) {
   return (
     <Animated.View style={[styles.scrollHintContainer, animStyle]}>
       <Text style={[styles.scrollHintText, { color: accent }]}>
-        برای ادامه به پایین بکشید
+        برای دیدن بخش بعد به پایین بکشید
       </Text>
       <Ionicons name="chevron-down" size={18} color={accent} />
     </Animated.View>
@@ -96,6 +93,9 @@ export default function OnboardingOverview() {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<any>(null);
   const [currentPage, setCurrentPage] = useState(0);
+
+  const topInset = Math.max(insets.top, 24);
+  const bottomInset = Math.max(insets.bottom, 16);
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const page = Math.round(e.nativeEvent.contentOffset.y / height);
@@ -117,22 +117,22 @@ export default function OnboardingOverview() {
 
   return (
     <View style={styles.root}>
-      {/* Floating Top Header (Fixed above scroll) */}
-      <View style={[styles.topHeader, { top: insets.top + 10 }]}>
+      {/* Floating Top Navigation (Guaranteed clearance from status bar/notch) */}
+      <View style={[styles.topHeader, { top: topInset + 12 }]}>
         <Pressable onPress={handleSkip} hitSlop={14} style={styles.skipBtn}>
           <Text style={styles.skipText}>رد شدن</Text>
           <Ionicons name="chevron-back" size={14} color={colors.muted} />
         </Pressable>
 
-        {/* Vertical Page Indicator Pills */}
-        <View style={styles.indicatorPills}>
+        {/* Step Indicator Dots */}
+        <View style={styles.indicatorContainer}>
           {SLIDES.map((s, idx) => (
             <View
               key={idx}
               style={[
-                styles.pill,
+                styles.dot,
                 idx === currentPage
-                  ? [styles.activePill, { backgroundColor: s.accent, height: 22 }]
+                  ? [styles.activeDot, { backgroundColor: s.accent }]
                   : null,
               ]}
             />
@@ -144,7 +144,7 @@ export default function OnboardingOverview() {
         </View>
       </View>
 
-      {/* Full-Screen Vertical Pager */}
+      {/* Full-Screen Vertical Paging ScrollView */}
       <ScrollView
         ref={scrollRef}
         pagingEnabled
@@ -159,20 +159,40 @@ export default function OnboardingOverview() {
           const isLast = idx === SLIDES.length - 1;
           return (
             <View key={idx} style={[styles.page, { height, width }]}>
-              {/* Fullscreen 3D Interactive Model Scene */}
-              <View style={[styles.sceneWrapper, { marginTop: insets.top + 30 }]}>
-                <ThreeDFullScene type={slide.type} />
-                <Text style={styles.touchHint}>
-                  <Ionicons name="finger-print-outline" size={12} color={colors.faint} /> برای چرخش لمس کنید و بچرخانید
-                </Text>
+              {/* Fullscreen Interactive 3D World (Occupies 100% of the screen) */}
+              <ThreeDFullScene type={slide.type} />
+
+              {/* Touch Rotation Hint */}
+              <View style={[styles.touchHintWrapper, { top: height * 0.54 }]}>
+                <View style={styles.touchHintPill}>
+                  <Ionicons name="finger-print-outline" size={13} color={slide.accent} />
+                  <Text style={[styles.touchHintText, { color: colors.muted }]}>
+                    برای چرخش سه‌بعدی لمس کنید و بچرخانید
+                  </Text>
+                </View>
               </View>
 
-              {/* Informative Floating Card */}
-              <View style={[styles.cardWrapper, { paddingBottom: insets.bottom + 20 }]}>
-                <View style={styles.glassCard}>
-                  {/* Badge Row */}
+              {/* Informative Floating Glass Card at Bottom */}
+              <View
+                style={[
+                  styles.cardWrapper,
+                  { bottom: bottomInset + 18 },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.glassCard,
+                    { borderColor: `${slide.accent}40` },
+                  ]}
+                >
+                  {/* Badge & Subtitle Row */}
                   <View style={styles.badgeRow}>
-                    <View style={[styles.badge, { borderColor: slide.accent }]}>
+                    <View
+                      style={[
+                        styles.badge,
+                        { borderColor: slide.accent, backgroundColor: `${slide.accent}14` },
+                      ]}
+                    >
                       <Text style={[styles.badgeText, { color: slide.accent }]}>
                         {slide.badge}
                       </Text>
@@ -187,12 +207,12 @@ export default function OnboardingOverview() {
                   {isLast ? (
                     <Pressable onPress={handleContinue} style={styles.continueBtn}>
                       <LinearGradient
-                        colors={[colors.accent, colors.accentDeep]}
+                        colors={[slide.accent, colors.accentDeep]}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={styles.continueGradient}
                       >
-                        <Text style={styles.continueBtnText}>شروع تجربه و ورود</Text>
+                        <Text style={styles.continueBtnText}>شروع و انتخاب روش ورود</Text>
                         <Ionicons name="arrow-back" size={18} color={colors.onAccent} />
                       </LinearGradient>
                     </Pressable>
@@ -213,7 +233,7 @@ export default function OnboardingOverview() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.ink,
+    backgroundColor: "#08080C",
   },
   topHeader: {
     position: "absolute",
@@ -228,85 +248,99 @@ const styles = StyleSheet.create({
     flexDirection: "row-reverse",
     alignItems: "center",
     gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 13,
     borderRadius: 20,
-    backgroundColor: "rgba(20,20,28,0.75)",
+    backgroundColor: "rgba(16,16,24,0.85)",
     borderWidth: 1,
-    borderColor: colors.lineStrong,
+    borderColor: "rgba(255,255,255,0.12)",
   },
   skipText: {
     fontFamily: "Vazirmatn_500Medium",
     fontSize: 12,
     color: colors.muted,
   },
-  indicatorPills: {
-    flexDirection: "column",
-    gap: 5,
+  indicatorContainer: {
+    flexDirection: "row-reverse",
+    gap: 6,
     alignItems: "center",
-    backgroundColor: "rgba(20,20,28,0.65)",
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 12,
+    backgroundColor: "rgba(16,16,24,0.85)",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: "rgba(255,255,255,0.1)",
   },
-  pill: {
-    width: 4,
-    height: 8,
-    borderRadius: 2,
-    backgroundColor: colors.white15,
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255,255,255,0.2)",
   },
-  activePill: {
-    width: 4,
-    borderRadius: 2,
+  activeDot: {
+    width: 18,
+    borderRadius: 3,
   },
   brandBadge: {
-    backgroundColor: "rgba(20,20,28,0.75)",
+    backgroundColor: "rgba(16,16,24,0.85)",
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: "rgba(255,255,255,0.12)",
     borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
   },
   brandTitle: {
     fontFamily: "Vazirmatn_700Bold",
     fontSize: 12,
-    letterSpacing: 1.5,
-    color: colors.text,
+    letterSpacing: 1.6,
+    color: "#FFFFFF",
   },
   scrollView: {
     flex: 1,
   },
   page: {
-    justifyContent: "space-between",
-    backgroundColor: colors.ink,
+    position: "relative",
+    backgroundColor: "#08080C",
+    overflow: "hidden",
   },
-  sceneWrapper: {
-    flex: 1,
+  touchHintWrapper: {
+    position: "absolute",
+    left: 0,
+    right: 0,
     alignItems: "center",
-    justifyContent: "center",
+    zIndex: 10,
   },
-  touchHint: {
+  touchHintPill: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(12,12,18,0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+  },
+  touchHintText: {
     fontFamily: "Vazirmatn_400Regular",
     fontSize: 11,
-    color: colors.faint,
-    marginTop: 4,
   },
   cardWrapper: {
-    paddingHorizontal: 20,
+    position: "absolute",
+    left: 18,
+    right: 18,
+    zIndex: 20,
   },
   glassCard: {
-    backgroundColor: "rgba(12,12,18,0.92)",
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
+    backgroundColor: "rgba(14, 14, 22, 0.94)",
+    borderWidth: 1.2,
     borderRadius: 26,
-    padding: 22,
+    padding: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.65,
+    shadowRadius: 24,
+    elevation: 10,
   },
   badgeRow: {
     flexDirection: "row-reverse",
@@ -316,10 +350,9 @@ const styles = StyleSheet.create({
   },
   badge: {
     paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    backgroundColor: colors.white03,
   },
   badgeText: {
     fontFamily: "Vazirmatn_700Bold",
@@ -332,11 +365,11 @@ const styles = StyleSheet.create({
   },
   titleText: {
     fontFamily: "Vazirmatn_700Bold",
-    fontSize: 20,
-    color: colors.text,
+    fontSize: 19,
+    color: "#FFFFFF",
     textAlign: "right",
     marginBottom: 8,
-    lineHeight: 30,
+    lineHeight: 28,
   },
   descriptionText: {
     fontFamily: "Vazirmatn_400Regular",

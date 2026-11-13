@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { SchoolPeriod } from "@/api/types";
 import { offlineDb } from "@/lib/offlineDb";
@@ -29,6 +29,10 @@ const DEFAULT_PERIODS: SchoolPeriod[] = [
 
 export default function SetupSchedule() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
+  const topPadding = Math.max(insets.top, 24) + 16;
+  const bottomPadding = Math.max(insets.bottom, 16) + 24;
 
   const [periods, setPeriods] = useState<SchoolPeriod[]>(DEFAULT_PERIODS);
   const [timetable, setTimetable] = useState<Day[]>(TIMETABLE);
@@ -86,9 +90,12 @@ export default function SetupSchedule() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: topPadding, paddingBottom: bottomPadding },
+        ]}
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
@@ -225,7 +232,7 @@ export default function SetupSchedule() {
           </LinearGradient>
         </Pressable>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

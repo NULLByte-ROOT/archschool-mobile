@@ -47,15 +47,22 @@ function AuthGate({ ready }: { ready: boolean }) {
   useEffect(() => {
     if (!ready) return;
     const isAuthRoute = segments[0] === "login" || segments[0] === "onboarding";
+    const isTabsRoute = segments[0] === "(tabs)";
+
     if (!token && !isAuthRoute) {
+      // Not logged in → go to onboarding splash
       router.replace("/onboarding");
     } else if (token && isAuthRoute) {
+      // Logged in but still on auth/onboarding screens
       if (user?.must_set_password) {
+        // Guest or legacy user who hasn't set a password yet
         router.replace("/onboarding/setup-account");
       } else {
-        router.replace("/home");
+        // Fully authenticated → go to home tabs
+        router.replace("/(tabs)/home");
       }
     }
+    // If token & isTabsRoute → already on the right screen, do nothing
   }, [ready, router, segments, token, user?.must_set_password]);
 
   return null;

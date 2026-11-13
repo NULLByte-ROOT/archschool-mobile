@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { setPassword } from "@/api/client";
 import { useAuthStore } from "@/store/auth";
@@ -23,8 +23,12 @@ import { colors } from "@/theme/tokens";
 
 export default function SetupAccount() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
+
+  const topPadding = Math.max(insets.top, 24) + 20;
+  const bottomPadding = Math.max(insets.bottom, 16) + 24;
 
   const [username, setUsername] = useState(user?.username ?? "");
   const [password, setPasswordVal] = useState("");
@@ -69,13 +73,16 @@ export default function SetupAccount() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[
+            styles.scroll,
+            { paddingTop: topPadding, paddingBottom: bottomPadding },
+          ]}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
@@ -193,7 +200,7 @@ export default function SetupAccount() {
           </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 

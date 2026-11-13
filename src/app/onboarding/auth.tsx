@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,22 +12,32 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  Layout,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
-import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+import {
+  GoogleSignin,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
 
-import { loginAsGuest, loginWithGoogle, loginWithPassword, registerWithPassword } from "@/api/client";
+import {
+  loginAsGuest,
+  loginWithGoogle,
+  loginWithPassword,
+  registerWithPassword,
+} from "@/api/client";
 import { useAuthStore } from "@/store/auth";
 import { colors } from "@/theme/tokens";
 
-const { width } = Dimensions.get("window");
-
 function GoogleIcon() {
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24">
+    <Svg width={22} height={22} viewBox="0 0 24 24">
       <Path
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
         fill="#4285F4"
@@ -54,6 +63,10 @@ export default function OnboardingAuth() {
   const insets = useSafeAreaInsets();
   const setSession = useAuthStore((s) => s.setSession);
 
+  const topPadding = Math.max(insets.top, 24) + 24;
+  const bottomPadding = Math.max(insets.bottom, 16) + 28;
+
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -70,11 +83,11 @@ export default function OnboardingAuth() {
         scopes: ["email", "profile"],
       });
     } catch {
-      // Config fallback
+      // Configuration fallback
     }
   }, []);
 
-  // 1. Native Google One-Tap Sign In
+  // 1. One-Tap Google Account Picker
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
     setError(null);
@@ -92,19 +105,25 @@ export default function OnboardingAuth() {
           google_id: user.id || undefined,
         });
         await setSession(res.access_token, res.user);
-        router.replace("/onboarding/setup-schedule");
+
+        // If existing user with active classroom, go straight home; otherwise setup
+        if (res.user.google_id && !res.user.must_set_password) {
+          router.replace("/(tabs)/home");
+        } else {
+          router.replace("/onboarding/setup-schedule");
+        }
       } else {
         setError("اطلاعات حساب گوگل دریافت نشد.");
       }
     } catch (err: any) {
       if (err.code === statusCodes.SIGN_IN_CANCELLED) {
-        // User cancelled account picker dialog
+        // User closed the account chooser sheet — no error needed
       } else if (err.code === statusCodes.IN_PROGRESS) {
-        // already in progress
+        // Sign-in in progress
       } else if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        setError("خدمات گوگل پلی روی دستگاه شما فعال نیست.");
+        setError("خدمات گوگل پلی روی دستگاه شما فعال یا به‌روز نیست.");
       } else {
-        setError(err?.message || "خطا در ورود با گوگل");
+        setError(err?.message || "خطا در اتصال به حساب گوگل");
       }
     } finally {
       setGoogleLoading(false);
@@ -149,11 +168,11 @@ export default function OnboardingAuth() {
         if (res.user.must_set_password) {
           router.replace("/onboarding/setup-account");
         } else {
-          router.replace("/home");
+          router.replace("/(tabs)/home");
         }
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "خطا در ارتباط با سرور");
+      setError(err instanceof Error ? err.message : "خطا در برقراری ارتباط با سرور");
     } finally {
       setLoading(false);
     }
@@ -169,14 +188,14 @@ export default function OnboardingAuth() {
           contentContainerStyle={[
             styles.scrollContent,
             {
-              paddingTop: insets.top + 28,
-              paddingBottom: insets.bottom + 30,
+              paddingTop: topPadding,
+              paddingBottom: bottomPadding,
             },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Top Navigation Bar */}
+          {/* Top Bar with Safe Clearance */}
           <View style={styles.navBar}>
             <Pressable
               onPress={() => router.back()}
@@ -186,23 +205,28 @@ export default function OnboardingAuth() {
               <Ionicons name="chevron-forward" size={20} color={colors.text} />
             </Pressable>
             <View style={styles.headerBadge}>
-              <Text style={styles.headerBadgeText}>احراز هویت امن</Text>
+              <Text style={styles.headerBadgeText}>ورود به آرک‌اسکول</Text>
             </View>
             <View style={{ width: 40 }} />
           </View>
 
-          {/* Hero Header */}
+          {/* Hero Branding Section */}
           <Animated.View entering={FadeInDown.delay(100)} style={styles.heroSection}>
             <View style={styles.logoAura}>
-              <Ionicons name="school" size={32} color={colors.accent} />
+              <LinearGradient
+                colors={["#0284C7", "#0F172A"]}
+                style={styles.logoGradient}
+              >
+                <Ionicons name="school" size={32} color="#38BDF8" />
+              </LinearGradient>
             </View>
-            <Text style={styles.mainHeading}>ورود به آرک‌اسکول</Text>
+            <Text style={styles.mainHeading}>انتخاب روش ورود</Text>
             <Text style={styles.subHeading}>
-              برای مدیریت تکالیف، زنگ‌ها و رقابت در کلاس، روش ورود خود را انتخاب کنید.
+              برای مدیریت هوشمند تکالیف، زنگ‌های مدرسه و حضور در کلاس‌های تیمی
             </Text>
           </Animated.View>
 
-          {/* Error Message */}
+          {/* Error Message Box */}
           {error && (
             <Animated.View entering={FadeIn} style={styles.errorBox}>
               <Ionicons name="alert-circle" size={18} color={colors.danger} />
@@ -210,173 +234,209 @@ export default function OnboardingAuth() {
             </Animated.View>
           )}
 
-          {/* Section 1: Social & Quick Actions */}
-          <Animated.View entering={FadeInDown.delay(200)} style={styles.socialButtonsGroup}>
+          {/* Primary Quick Login Options */}
+          <Animated.View entering={FadeInDown.delay(180)} style={styles.quickOptionsGroup}>
             {/* Google One-Tap Action */}
             <Pressable
               onPress={handleGoogleSignIn}
-              disabled={googleLoading || loading}
-              style={styles.googleButton}
+              disabled={googleLoading || guestLoading || loading}
+              style={({ pressed }) => [
+                styles.googleButton,
+                pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] },
+              ]}
             >
               <View style={styles.socialBtnInner}>
                 <GoogleIcon />
-                <Text style={styles.googleBtnText}>ادامه با حساب گوگل</Text>
+                <View style={styles.btnTextCol}>
+                  <Text style={styles.googleBtnText}>ادامه با حساب گوگل</Text>
+                  <Text style={styles.googleBtnSubtext}>انتخاب اکانت با یک لمس</Text>
+                </View>
                 {googleLoading ? (
-                  <ActivityIndicator size="small" color="#000000" />
+                  <ActivityIndicator size="small" color="#0F172A" />
                 ) : (
-                  <View style={styles.quickTag}>
-                    <Text style={styles.quickTagText}>یک‌لمسی</Text>
-                  </View>
+                  <Ionicons name="chevron-back" size={18} color="#94A3B8" />
                 )}
               </View>
             </Pressable>
 
-            {/* Guest Fast-Pass Action */}
+            {/* Instant Guest Mode Action */}
             <Pressable
               onPress={handleGuestSignIn}
-              disabled={guestLoading || loading}
-              style={styles.guestButton}
+              disabled={googleLoading || guestLoading || loading}
+              style={({ pressed }) => [
+                styles.guestButton,
+                pressed && { opacity: 0.9, transform: [{ scale: 0.99 }] },
+              ]}
             >
               <View style={styles.socialBtnInner}>
-                <Ionicons name="flash" size={18} color={colors.warning} />
-                <Text style={styles.guestBtnText}>ورود سریع مهمان (آفلاین)</Text>
+                <View style={styles.guestIconBox}>
+                  <Ionicons name="flash" size={18} color="#FBBF24" />
+                </View>
+                <View style={styles.btnTextCol}>
+                  <Text style={styles.guestBtnText}>ورود سریع به عنوان مهمان</Text>
+                  <Text style={styles.guestBtnSubtext}>تجربه کامل اپلیکیشن بدون ثبت‌نام</Text>
+                </View>
                 {guestLoading ? (
-                  <ActivityIndicator size="small" color={colors.text} />
+                  <ActivityIndicator size="small" color="#FBBF24" />
                 ) : (
-                  <Text style={styles.guestHint}>بدون نیاز به ثبت‌نام</Text>
+                  <Ionicons name="chevron-back" size={18} color={colors.muted} />
                 )}
               </View>
             </Pressable>
           </Animated.View>
 
-          {/* Elegant Divider */}
+          {/* Divider */}
           <View style={styles.dividerRow}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerLabel}>یا با نام کاربری و رمز</Text>
+            <Text style={styles.dividerLabel}>یا استفاده از نام کاربری و رمز</Text>
             <View style={styles.dividerLine} />
           </View>
 
-          {/* Section 2: Account Form Card (Login / Register) */}
-          <Animated.View entering={FadeInDown.delay(300)} style={styles.formCard}>
-            {/* Switch Capsule */}
-            <View style={styles.switchCapsule}>
-              <Pressable
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setIsRegister(false);
-                }}
-                style={[styles.switchOption, !isRegister && styles.switchOptionActive]}
-              >
-                <Text
-                  style={[
-                    styles.switchOptionText,
-                    !isRegister && styles.switchOptionTextActive,
-                  ]}
-                >
-                  ورود به حساب
-                </Text>
-              </Pressable>
-
-              <Pressable
-                onPress={() => {
-                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setIsRegister(true);
-                }}
-                style={[styles.switchOption, isRegister && styles.switchOptionActive]}
-              >
-                <Text
-                  style={[
-                    styles.switchOptionText,
-                    isRegister && styles.switchOptionTextActive,
-                  ]}
-                >
-                  ثبت‌نام جدید
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Username Input */}
-            <Text style={styles.inputLabel}>نام کاربری</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="person-outline" size={18} color={colors.muted} />
-              <TextInput
-                value={username}
-                onChangeText={setUsername}
-                placeholder="مثلاً: sepehr_dev"
-                placeholderTextColor={colors.faint}
-                autoCapitalize="none"
-                style={styles.textInput}
-              />
-            </View>
-
-            {/* Optional Email on Register */}
-            {isRegister && (
-              <>
-                <Text style={styles.inputLabel}>ایمیل (اختیاری جهت بازیابی)</Text>
-                <View style={styles.inputWrapper}>
-                  <Ionicons name="mail-outline" size={18} color={colors.muted} />
-                  <TextInput
-                    value={email}
-                    onChangeText={setEmail}
-                    placeholder="email@example.com"
-                    placeholderTextColor={colors.faint}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    style={styles.textInput}
-                  />
-                </View>
-              </>
-            )}
-
-            {/* Password Input */}
-            <Text style={styles.inputLabel}>رمز عبور</Text>
-            <View style={styles.inputWrapper}>
-              <Ionicons name="lock-closed-outline" size={18} color={colors.muted} />
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="حداقل ۶ کاراکتر"
-                placeholderTextColor={colors.faint}
-                secureTextEntry={!showPassword}
-                style={styles.textInput}
-              />
-              <Pressable
-                onPress={() => setShowPassword(!showPassword)}
-                hitSlop={10}
-              >
-                <Ionicons
-                  name={showPassword ? "eye-off-outline" : "eye-outline"}
-                  size={18}
-                  color={colors.muted}
-                />
-              </Pressable>
-            </View>
-
-            {/* Submit Action Button */}
+          {/* Expandable Account Form Button / Card */}
+          {!showPasswordForm ? (
             <Pressable
-              onPress={handleAccountAuth}
-              disabled={loading}
-              style={styles.submitButton}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowPasswordForm(true);
+              }}
+              style={styles.expandButton}
             >
-              <LinearGradient
-                colors={[colors.accent, colors.accentDeep]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.submitGradient}
-              >
-                {loading ? (
-                  <ActivityIndicator color={colors.onAccent} />
-                ) : (
-                  <>
-                    <Text style={styles.submitText}>
-                      {isRegister ? "ایجاد حساب و ورود" : "ورود به حساب کاربری"}
-                    </Text>
-                    <Ionicons name="arrow-back" size={18} color={colors.onAccent} />
-                  </>
-                )}
-              </LinearGradient>
+              <View style={styles.expandBtnInner}>
+                <Ionicons name="key-outline" size={18} color={colors.accent} />
+                <Text style={styles.expandBtnText}>
+                  ورود یا ثبت‌نام با نام کاربری و رمز عبور
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={colors.muted} />
+              </View>
             </Pressable>
-          </Animated.View>
+          ) : (
+            <Animated.View
+              layout={Layout.springify()}
+              entering={FadeInDown.duration(280)}
+              style={styles.formCard}
+            >
+              {/* Switch Tab Capsule */}
+              <View style={styles.switchCapsule}>
+                <Pressable
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setIsRegister(false);
+                    setError(null);
+                  }}
+                  style={[styles.switchOption, !isRegister && styles.switchOptionActive]}
+                >
+                  <Text
+                    style={[
+                      styles.switchOptionText,
+                      !isRegister && styles.switchOptionTextActive,
+                    ]}
+                  >
+                    ورود به حساب
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setIsRegister(true);
+                    setError(null);
+                  }}
+                  style={[styles.switchOption, isRegister && styles.switchOptionActive]}
+                >
+                  <Text
+                    style={[
+                      styles.switchOptionText,
+                      isRegister && styles.switchOptionTextActive,
+                    ]}
+                  >
+                    ثبت‌نام جدید
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Username Input */}
+              <Text style={styles.inputLabel}>نام کاربری</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={18} color={colors.muted} />
+                <TextInput
+                  value={username}
+                  onChangeText={setUsername}
+                  placeholder="مثلاً: sepehr_arch"
+                  placeholderTextColor={colors.faint}
+                  autoCapitalize="none"
+                  style={styles.textInput}
+                />
+              </View>
+
+              {/* Optional Email for Registration */}
+              {isRegister && (
+                <>
+                  <Text style={styles.inputLabel}>ایمیل (اختیاری)</Text>
+                  <View style={styles.inputWrapper}>
+                    <Ionicons name="mail-outline" size={18} color={colors.muted} />
+                    <TextInput
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="info@example.com"
+                      placeholderTextColor={colors.faint}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      style={styles.textInput}
+                    />
+                  </View>
+                </>
+              )}
+
+              {/* Password Input */}
+              <Text style={styles.inputLabel}>رمز عبور</Text>
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={18} color={colors.muted} />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="حداقل ۶ کاراکتر"
+                  placeholderTextColor={colors.faint}
+                  secureTextEntry={!showPassword}
+                  style={styles.textInput}
+                />
+                <Pressable
+                  onPress={() => setShowPassword(!showPassword)}
+                  hitSlop={10}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={18}
+                    color={colors.muted}
+                  />
+                </Pressable>
+              </View>
+
+              {/* Submit Button */}
+              <Pressable
+                onPress={handleAccountAuth}
+                disabled={loading}
+                style={styles.submitButton}
+              >
+                <LinearGradient
+                  colors={[colors.accent, colors.accentDeep]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.submitGradient}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.onAccent} />
+                  ) : (
+                    <>
+                      <Text style={styles.submitText}>
+                        {isRegister ? "ایجاد حساب و ادامه" : "ورود به حساب کاربری"}
+                      </Text>
+                      <Ionicons name="arrow-back" size={18} color={colors.onAccent} />
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </Animated.View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -386,7 +446,7 @@ export default function OnboardingAuth() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.ink,
+    backgroundColor: "#08080C",
   },
   scrollContent: {
     paddingHorizontal: 22,
@@ -395,7 +455,7 @@ const styles = StyleSheet.create({
     flexDirection: "row-reverse",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
   backButton: {
     width: 40,
@@ -403,17 +463,17 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   headerBadge: {
-    backgroundColor: colors.white05,
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    borderColor: "rgba(255,255,255,0.1)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
   },
   headerBadgeText: {
     fontFamily: "Vazirmatn_500Medium",
@@ -422,25 +482,35 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 26,
   },
   logoAura: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: colors.white06,
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    padding: 3,
+    backgroundColor: "rgba(56,189,248,0.15)",
+    marginBottom: 16,
+    shadowColor: "#38BDF8",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 8,
+  },
+  logoGradient: {
+    flex: 1,
+    borderRadius: 33,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(56,189,248,0.4)",
   },
   mainHeading: {
     fontFamily: "Vazirmatn_700Bold",
     fontSize: 24,
-    color: colors.text,
+    color: "#FFFFFF",
     textAlign: "center",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   subHeading: {
     fontFamily: "Vazirmatn_400Regular",
@@ -448,7 +518,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: "center",
     lineHeight: 22,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
   errorBox: {
     flexDirection: "row-reverse",
@@ -458,7 +528,7 @@ const styles = StyleSheet.create({
     borderColor: colors.dangerLine,
     borderWidth: 1,
     borderRadius: 14,
-    padding: 12,
+    padding: 13,
     marginBottom: 18,
   },
   errorText: {
@@ -468,83 +538,117 @@ const styles = StyleSheet.create({
     color: colors.danger,
     textAlign: "right",
   },
-  socialButtonsGroup: {
+  quickOptionsGroup: {
     gap: 12,
-    marginBottom: 22,
+    marginBottom: 24,
   },
   googleButton: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    borderRadius: 20,
     paddingVertical: 14,
-    paddingHorizontal: 16,
-    shadowColor: "#FFF",
+    paddingHorizontal: 18,
+    shadowColor: "#FFFFFF",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
     elevation: 4,
   },
   socialBtnInner: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
+    justifyContent: "space-between",
+  },
+  btnTextCol: {
+    flex: 1,
+    marginHorizontal: 12,
+    alignItems: "flex-end",
   },
   googleBtnText: {
     fontFamily: "Vazirmatn_700Bold",
     fontSize: 15,
     color: "#0F172A",
   },
-  quickTag: {
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  quickTagText: {
-    fontFamily: "Vazirmatn_500Medium",
-    fontSize: 10,
+  googleBtnSubtext: {
+    fontFamily: "Vazirmatn_400Regular",
+    fontSize: 11,
     color: "#64748B",
+    marginTop: 2,
   },
   guestButton: {
-    backgroundColor: colors.white06,
-    borderWidth: 1,
-    borderColor: colors.lineStrong,
-    borderRadius: 18,
+    backgroundColor: "rgba(18,18,26,0.9)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255,255,255,0.12)",
+    borderRadius: 20,
     paddingVertical: 13,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
+  },
+  guestIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(251,191,36,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   guestBtnText: {
     fontFamily: "Vazirmatn_700Bold",
     fontSize: 14,
-    color: colors.text,
+    color: "#FFFFFF",
   },
-  guestHint: {
+  guestBtnSubtext: {
     fontFamily: "Vazirmatn_400Regular",
     fontSize: 11,
-    color: colors.faint,
+    color: colors.muted,
+    marginTop: 2,
   },
   dividerRow: {
     flexDirection: "row-reverse",
     alignItems: "center",
     gap: 12,
-    marginBottom: 22,
+    marginBottom: 20,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.line,
+    backgroundColor: "rgba(255,255,255,0.08)",
   },
   dividerLabel: {
     fontFamily: "Vazirmatn_400Regular",
     fontSize: 12,
     color: colors.faint,
   },
-  formCard: {
-    backgroundColor: "rgba(15,15,22,0.94)",
-    borderRadius: 24,
+  expandButton: {
+    backgroundColor: "rgba(16,16,24,0.7)",
     borderWidth: 1,
-    borderColor: colors.lineStrong,
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  expandBtnInner: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  expandBtnText: {
+    fontFamily: "Vazirmatn_500Medium",
+    fontSize: 13,
+    color: colors.muted,
+    flex: 1,
+    textAlign: "right",
+    marginHorizontal: 8,
+  },
+  formCard: {
+    backgroundColor: "rgba(16,16,24,0.95)",
+    borderRadius: 24,
+    borderWidth: 1.2,
+    borderColor: "rgba(255,255,255,0.12)",
     padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 6,
   },
   switchCapsule: {
     flexDirection: "row-reverse",
@@ -553,7 +657,7 @@ const styles = StyleSheet.create({
     padding: 3,
     marginBottom: 18,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   switchOption: {
     flex: 1,
@@ -562,7 +666,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   switchOptionActive: {
-    backgroundColor: colors.white10,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   switchOptionText: {
     fontFamily: "Vazirmatn_500Medium",
@@ -571,7 +675,7 @@ const styles = StyleSheet.create({
   },
   switchOptionTextActive: {
     fontFamily: "Vazirmatn_700Bold",
-    color: colors.text,
+    color: "#FFFFFF",
   },
   inputLabel: {
     fontFamily: "Vazirmatn_500Medium",
@@ -587,7 +691,7 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: colors.inkRaised,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: "rgba(255,255,255,0.08)",
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -597,13 +701,13 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: "Vazirmatn_500Medium",
     fontSize: 14,
-    color: colors.text,
+    color: "#FFFFFF",
     textAlign: "right",
   },
   submitButton: {
     borderRadius: 16,
     overflow: "hidden",
-    marginTop: 10,
+    marginTop: 8,
   },
   submitGradient: {
     flexDirection: "row-reverse",
