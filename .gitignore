@@ -48,3 +48,10 @@ dist-test/
 
 # local agent settings
 .claude/
+.idea/
+.vscode/
+
+# credentials & secrets
+*firebase*.json
+*-service-account*.json
+
