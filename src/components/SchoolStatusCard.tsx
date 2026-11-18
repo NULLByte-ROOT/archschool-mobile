@@ -183,7 +183,7 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
     cardBorderColor = "rgba(167,139,250,0.25)";
   } else if (isHoliday) {
     accentColor = "#c084fc";
-    statusBadgeText = "تعطیلات رسمی";
+    statusBadgeText = "تعطیلات آخر هفته";
     statusDotTone = "#c084fc";
     gradientColors = ["rgba(192,132,252,0.14)", "rgba(147,51,234,0.02)", "transparent"];
     cornerTone = "rgba(192,132,252,0.35)";

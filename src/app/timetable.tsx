@@ -70,6 +70,7 @@ function dueTone(due: string | null | undefined): "red" | "amber" | "none" {
   const date = parseDue(due);
   if (!date) return "none";
   const diff = date.getTime() - Date.now();
+  if (diff <= 0) return "none";
   if (diff <= 86_400_000) return "red";
   if (diff <= 86_400_000 * 2) return "amber";
   return "none";
@@ -196,7 +197,9 @@ function DayRow({
             }
 
             const related = (bySubject[entry.subject.id] ?? []).filter(
-              (item) => !item.is_completed_by_me
+              (item) =>
+                !item.is_completed_by_me &&
+                (!parseDue(item.due_date) || (parseDue(item.due_date)?.getTime() ?? 0) >= Date.now())
             );
             const dotTone = related[0] ? dueTone(related[0].due_date) : "none";
 
@@ -261,7 +264,9 @@ function NextDayPanel({
       .filter((entry) => entry.subject)
       .map((entry) => {
         const list = (bySubject[entry.subject!.id] ?? []).filter(
-          (item) => !item.is_completed_by_me
+          (item) =>
+            !item.is_completed_by_me &&
+            (!parseDue(item.due_date) || (parseDue(item.due_date)?.getTime() ?? 0) >= now)
         );
         const exams = list.filter((item) => item.category === "exam");
         return {
@@ -403,7 +408,9 @@ export default function TimetableScreen() {
         for (const entry of entries) {
           if (!entry.subject) continue;
           const list = (bySubject[entry.subject.id] ?? []).filter(
-            (item) => !item.is_completed_by_me
+            (item) =>
+              !item.is_completed_by_me &&
+              (!parseDue(item.due_date) || (parseDue(item.due_date)?.getTime() ?? 0) >= now)
           );
           events += list.length;
           if (list.length) {
@@ -421,7 +428,7 @@ export default function TimetableScreen() {
           tone,
         };
       }),
-    [bySubject]
+    [bySubject, now]
   );
 
   const shadow = new Date(now);

@@ -54,6 +54,7 @@ interface AppTextProps {
   ellipsizeMode?: "head" | "middle" | "tail" | "clip";
   /** Force LTR for access codes, room ids and numeric hints. */
   ltr?: boolean;
+  selectable?: boolean;
   onPress?: () => void;
 }
 
@@ -66,11 +67,13 @@ export function AppText({
   numberOfLines,
   ellipsizeMode,
   ltr = false,
+  selectable,
   onPress,
 }: AppTextProps) {
   return (
     <Text
       onPress={onPress}
+      selectable={selectable}
       numberOfLines={numberOfLines}
       ellipsizeMode={ellipsizeMode}
       allowFontScaling

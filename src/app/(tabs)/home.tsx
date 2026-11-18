@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useEffect, useMemo, useState } from "react";
 import {
   Pressable,
@@ -27,6 +29,7 @@ import {
   fetchOverview,
   fetchTeam,
   qk,
+  toggleAssignment,
 } from "@/api/client";
 import type { Assignment, DailyActivity, LeaderboardEntry, Message } from "@/api/types";
 import { SchoolStatusCard } from "@/components/SchoolStatusCard";
@@ -51,8 +54,10 @@ import {
   fmtPercent,
   formatDue,
   parseDue,
+  relativeDue,
   todayLabel,
 } from "@/lib/format";
+import { subjectName } from "@/lib/subjects";
 import { canChat } from "@/lib/roles";
 import { useAuthStore } from "@/store/auth";
 import {
@@ -349,63 +354,140 @@ function AssignmentsCta({
   pending,
   urgent,
   onOpen,
+  overduePromptItems = [],
+  onResolveOverdue,
 }: {
   pending: number;
   urgent: number;
   onOpen: () => void;
+  overduePromptItems?: Assignment[];
+  onResolveOverdue?: (id: number, completed: boolean) => Promise<void>;
 }) {
   return (
-    <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel="تکالیف من">
-      <View style={st.cta}>
-        <LinearGradient
-          pointerEvents="none"
-          colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.045)", "rgba(255,255,255,0)"]}
-          start={{ x: 1, y: 0 }}
-          end={{ x: 0, y: 0 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={st.ctaTop}>
-          <View style={st.ctaIcon}>
-            <Ionicons name="clipboard" size={22} color={colors.black} />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <MonoLabel>// ASSIGNMENTS</MonoLabel>
-            <AppText style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 26 }}>
-              تکالیف من
-            </AppText>
-            <AppText color={colors.textSoft} style={{ fontSize: 11.5, lineHeight: 18, marginTop: 2 }}>
-              <AppText color={colors.white} style={{ fontFamily: fonts.bold }}>
-                {fmtNum(pending)}
-              </AppText>{" "}
-              تکلیف باقی‌مانده
-              {urgent > 0 ? (
-                <>
-                  <AppText color={colors.faint}> · </AppText>
-                  <AppText color="#fca5a5" style={{ fontFamily: fonts.bold }}>
-                    {fmtNum(urgent)} فوری
-                  </AppText>
-                </>
-              ) : null}
-            </AppText>
-          </View>
+    <View style={st.cta}>
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(255,255,255,0.10)", "rgba(255,255,255,0.045)", "rgba(255,255,255,0)"]}
+        start={{ x: 1, y: 0 }}
+        end={{ x: 0, y: 0 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel="تکالیف من"
+        style={st.ctaTop}
+      >
+        <View style={st.ctaIcon}>
+          <Ionicons name="clipboard" size={22} color={colors.black} />
         </View>
-
-        <View style={st.ctaPill}>
-          <AppText
-            color={colors.black}
-            style={{ fontFamily: fonts.black, fontSize: 12, lineHeight: 18 }}
-          >
-            مشاهده تکالیف
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <MonoLabel>// ASSIGNMENTS</MonoLabel>
+          <AppText style={{ fontFamily: fonts.black, fontSize: 18, lineHeight: 26 }}>
+            تکالیف من
           </AppText>
-          <Ionicons
-            name="arrow-up-outline"
-            size={15}
-            color={colors.black}
-            style={{ transform: [{ rotate: "45deg" }] }}
-          />
+          <AppText color={colors.textSoft} style={{ fontSize: 11.5, lineHeight: 18, marginTop: 2 }}>
+            <AppText color={colors.white} style={{ fontFamily: fonts.bold }}>
+              {fmtNum(pending)}
+            </AppText>{" "}
+            تکلیف باقی‌مانده
+            {urgent > 0 ? (
+              <>
+                <AppText color={colors.faint}> · </AppText>
+                <AppText color="#fca5a5" style={{ fontFamily: fonts.bold }}>
+                  {fmtNum(urgent)} فوری
+                </AppText>
+              </>
+            ) : null}
+          </AppText>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+
+      {overduePromptItems.length > 0 ? (
+        <View style={st.overduePromptCard}>
+          <View style={st.overduePromptHeader}>
+            <View style={st.overduePromptHeaderRight}>
+              <Ionicons name="help-circle" size={17} color="#fbbf24" />
+              <AppText style={st.overduePromptTitle}>
+                این رو انجام داده بودی یا نه؟
+              </AppText>
+            </View>
+            <View style={st.overduePromptBadge}>
+              <AppText style={st.overduePromptBadgeText}>
+                {fmtNum(overduePromptItems.length)} مورد
+              </AppText>
+            </View>
+          </View>
+
+          <View style={st.overduePromptList}>
+            {overduePromptItems.map((item) => (
+              <View key={item.id} style={st.overduePromptItem}>
+                <View style={st.overduePromptItemTop}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <AppText
+                      numberOfLines={1}
+                      style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 19 }}
+                    >
+                      {item.title}
+                    </AppText>
+                    <AppText
+                      numberOfLines={1}
+                      color={colors.faint}
+                      style={{ fontSize: 11, lineHeight: 16, marginTop: 2 }}
+                    >
+                      {subjectName(item.subject_id ?? "", item.course ?? "")}
+                      {item.due_date ? ` · مهلت: ${relativeDue(item.due_date)}` : ""}
+                    </AppText>
+                  </View>
+                </View>
+
+                <View style={st.overduePromptActions}>
+                  <Pressable
+                    onPress={() => void onResolveOverdue?.(item.id, true)}
+                    style={({ pressed }) => [st.promptBtnYes, pressed && { opacity: 0.7 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="بله انجام دادم"
+                  >
+                    <Ionicons name="checkmark" size={14} color="#34d399" />
+                    <AppText style={st.promptBtnYesText}>بله انجام دادم</AppText>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => void onResolveOverdue?.(item.id, false)}
+                    style={({ pressed }) => [st.promptBtnNo, pressed && { opacity: 0.7 }]}
+                    accessibilityRole="button"
+                    accessibilityLabel="نه انجام ندادم"
+                  >
+                    <Ionicons name="close" size={14} color="#f87171" />
+                    <AppText style={st.promptBtnNoText}>نه، ندادم</AppText>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      <Pressable
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel="مشاهده تکالیف"
+        style={st.ctaPill}
+      >
+        <AppText
+          color={colors.black}
+          style={{ fontFamily: fonts.black, fontSize: 12, lineHeight: 18 }}
+        >
+          مشاهده تکالیف
+        </AppText>
+        <Ionicons
+          name="arrow-up-outline"
+          size={15}
+          color={colors.black}
+          style={{ transform: [{ rotate: "45deg" }] }}
+        />
+      </Pressable>
+    </View>
   );
 }
 
@@ -958,6 +1040,7 @@ export default function DashboardScreen() {
   const now = useNow();
   const { bells } = useBellSchedule();
   const member = !canChat(user);
+  const queryClient = useQueryClient();
 
   const overview = useQuery({ queryKey: qk.overview, queryFn: fetchOverview });
   const assignments = useQuery({
@@ -970,6 +1053,100 @@ export default function DashboardScreen() {
     enabled: !member,
   });
   const team = useQuery({ queryKey: qk.team, queryFn: fetchTeam, enabled: !member });
+
+  // Resolved overdue assignments stored in SecureStore so the user is asked only once
+  const [resolvedOverdueIds, setResolvedOverdueIds] = useState<Set<number>>(new Set());
+  const [resolvedLoaded, setResolvedLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    let active = true;
+    void SecureStore.getItemAsync(`archschool_resolved_overdue_${user.id}`)
+      .then((val) => {
+        if (!active) return;
+        if (val) {
+          try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) {
+              setResolvedOverdueIds(new Set(parsed));
+            }
+          } catch {}
+        }
+        setResolvedLoaded(true);
+      })
+      .catch(() => {
+        if (active) setResolvedLoaded(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  // All overdue uncompleted assignments that haven't been resolved yet
+  const unpromptedOverdue = useMemo(() => {
+    if (!resolvedLoaded || !assignments.data) return [];
+    return assignments.data
+      .filter((item) => {
+        if (item.is_completed_by_me) return false;
+        if (resolvedOverdueIds.has(item.id)) return false;
+        const due = parseDue(item.due_date);
+        return Boolean(due && due.getTime() < now);
+      })
+      .sort((a, b) => {
+        const da = parseDue(a.due_date)?.getTime() ?? 0;
+        const db = parseDue(b.due_date)?.getTime() ?? 0;
+        return db - da; // Show most recent overdue first
+      });
+  }, [assignments.data, resolvedLoaded, resolvedOverdueIds, now]);
+
+  // Limit to 4 items: if more than 4, excess items automatically get marked as uncompleted / resolved
+  useEffect(() => {
+    if (!user?.id || !resolvedLoaded) return;
+    if (unpromptedOverdue.length > 4) {
+      const excessIds = unpromptedOverdue.slice(4).map((item) => item.id);
+      setResolvedOverdueIds((prev) => {
+        const next = new Set(prev);
+        for (const id of excessIds) next.add(id);
+        void SecureStore.setItemAsync(
+          `archschool_resolved_overdue_${user.id}`,
+          JSON.stringify(Array.from(next))
+        ).catch(() => undefined);
+        return next;
+      });
+    }
+  }, [unpromptedOverdue, user?.id, resolvedLoaded]);
+
+  const overduePromptItems = useMemo(
+    () => unpromptedOverdue.slice(0, 4),
+    [unpromptedOverdue]
+  );
+
+  const handleResolveOverdue = async (id: number, completed: boolean) => {
+    if (!user?.id) return;
+    try {
+      if (completed) {
+        await toggleAssignment(id);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+        void queryClient.invalidateQueries({ queryKey: qk.assignments });
+        void queryClient.invalidateQueries({ queryKey: qk.overdue });
+        void queryClient.invalidateQueries({ queryKey: qk.overview });
+        void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+        void queryClient.invalidateQueries({ queryKey: qk.userStats(user.id) });
+      } else {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+      }
+
+      setResolvedOverdueIds((prev) => {
+        const next = new Set(prev);
+        next.add(id);
+        void SecureStore.setItemAsync(
+          `archschool_resolved_overdue_${user.id}`,
+          JSON.stringify(Array.from(next))
+        ).catch(() => undefined);
+        return next;
+      });
+    } catch {}
+  };
 
   const refreshing =
     overview.isRefetching || assignments.isRefetching || chats.isRefetching;
@@ -990,7 +1167,11 @@ export default function DashboardScreen() {
       parseDue(item.due_date)?.getTime() ??
       Number.POSITIVE_INFINITY;
     return (assignments.data ?? [])
-      .filter((item) => !item.is_completed_by_me)
+      .filter((item) => {
+        if (item.is_completed_by_me) return false;
+        const due = parseDue(item.due_date);
+        return !due || due.getTime() >= now;
+      })
       .map((item) => ({ item, at: alignedDue(item) }))
       .sort((a, b) => a.at - b.at)
       .map((entry) => entry.item);
@@ -1005,7 +1186,7 @@ export default function DashboardScreen() {
           bells,
           item.subject_id
         );
-        return Boolean(countdown && (countdown.urgent || countdown.overdue));
+        return Boolean(countdown && countdown.urgent && !countdown.overdue);
       }),
     [pending, now, bells]
   );
@@ -1112,6 +1293,8 @@ export default function DashboardScreen() {
             pending={pending.length}
             urgent={urgent.length}
             onOpen={() => router.push("/assignments")}
+            overduePromptItems={overduePromptItems}
+            onResolveOverdue={handleResolveOverdue}
           />
         </Animated.View>
 
@@ -1329,6 +1512,104 @@ const st = StyleSheet.create({
     backgroundColor: colors.white,
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  overduePromptCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.30)",
+    backgroundColor: "rgba(251,191,36,0.06)",
+    padding: 12,
+    gap: 10,
+  },
+  overduePromptHeader: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  overduePromptHeaderRight: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+  },
+  overduePromptTitle: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#fef08a",
+  },
+  overduePromptBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: "rgba(251,191,36,0.18)",
+    borderWidth: 1,
+    borderColor: "rgba(251,191,36,0.35)",
+  },
+  overduePromptBadgeText: {
+    fontFamily: fonts.semibold,
+    fontSize: 10,
+    lineHeight: 14,
+    color: "#fbbf24",
+  },
+  overduePromptList: {
+    gap: 8,
+  },
+  overduePromptItem: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    padding: 10,
+    gap: 8,
+  },
+  overduePromptItemTop: {
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  overduePromptActions: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+  },
+  promptBtnYes: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(52,211,153,0.14)",
+    borderWidth: 1,
+    borderColor: "rgba(52,211,153,0.35)",
+  },
+  promptBtnYesText: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#34d399",
+  },
+  promptBtnNo: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(248,113,113,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(248,113,113,0.25)",
+  },
+  promptBtnNoText: {
+    fontFamily: fonts.medium,
+    fontSize: 11,
+    lineHeight: 16,
+    color: "#f87171",
   },
 
   /* panels */

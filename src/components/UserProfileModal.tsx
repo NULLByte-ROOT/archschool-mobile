@@ -393,8 +393,12 @@ export function UserProfileModal({
                 </View>
 
                 <View style={styles.bio}>
-                  <AppText color={colors.textSoft} style={styles.bioText}>
-                    {profile.bio?.trim() || "این کاربر هنوز بیوگرافی ننوشته."}
+                  <View style={styles.bioHead}>
+                    <Ionicons name="information-circle-outline" size={13} color={colors.accent} />
+                    <MonoLabel>// مشخصات و درباره کاربر</MonoLabel>
+                  </View>
+                  <AppText color={colors.text} style={styles.bioText} selectable>
+                    {profile.bio?.trim() || "این کاربر هنوز مشخصاتی ننوشته است."}
                   </AppText>
                 </View>
 
@@ -618,11 +622,18 @@ const styles = StyleSheet.create({
   bio: {
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.white03,
-    padding: 12,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(255,255,255,0.03)",
+    padding: 14,
+    gap: 8,
   },
-  bioText: { fontSize: 12, lineHeight: 21 },
+  bioHead: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
+  },
+  bioText: { fontSize: 13, lineHeight: 22 },
   actionPrimary: {
     marginTop: 2,
     height: 48,

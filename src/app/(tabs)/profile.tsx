@@ -428,9 +428,9 @@ export default function ProfileScreen() {
           {/* bio */}
           <View style={{ marginTop: 20 }}>
             <View style={styles.bioHead}>
-              <MonoLabel>BIO</MonoLabel>
+              <MonoLabel>مشخصات و بیوگرافی</MonoLabel>
               <AppText ltr color={colors.faint} style={{ fontSize: 10, lineHeight: 14 }}>
-                {fmtNum(bio.length)}/200
+                {fmtNum(bio.length)}/500
               </AppText>
             </View>
             <TextInput
@@ -439,9 +439,9 @@ export default function ProfileScreen() {
                 setBio(value);
                 setBioSaved(false);
               }}
-              maxLength={200}
+              maxLength={500}
               multiline
-              placeholder="یک بیو کوتاه درباره خودت بنویس…"
+              placeholder="درباره خودت، مشخصات، علایق یا رشته و کلاست بنویس…"
               placeholderTextColor={colors.faint}
               style={styles.bioInput}
               textAlignVertical="top"
@@ -767,17 +767,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   bioInput: {
-    minHeight: 64,
+    minHeight: 110,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.white10,
     backgroundColor: "rgba(255,255,255,0.02)",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     color: colors.text,
     fontFamily: fonts.regular,
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 22,
     textAlign: "right",
   },
   bioFoot: {
