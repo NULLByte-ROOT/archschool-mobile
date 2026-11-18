@@ -36,7 +36,10 @@ export interface UpdateCheckResponse {
  * 1. Queries backend for mandatory APK binary update.
  * 2. If no APK update, checks native expo-updates for self-hosted OTA bundle.
  */
-export async function checkForUpdates(timeoutMs = 4000): Promise<UpdateCheckResponse> {
+export async function checkForUpdates(
+  timeoutMs = 4000,
+  throwOnError = false
+): Promise<UpdateCheckResponse> {
   const appVersion = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "1.0.0";
   const runtimeVersion =
     typeof Constants.expoConfig?.runtimeVersion === "string"
@@ -63,8 +66,10 @@ export async function checkForUpdates(timeoutMs = 4000): Promise<UpdateCheckResp
         return data;
       }
     }
-  } catch {
-    // Ignore network error on APK check
+  } catch (apkErr) {
+    if (throwOnError) {
+      console.warn("[updater] APK check network error:", apkErr);
+    }
   }
 
   // 2. Native Expo OTA Check
@@ -82,6 +87,9 @@ export async function checkForUpdates(timeoutMs = 4000): Promise<UpdateCheckResp
     }
   } catch (err) {
     console.warn("[updater] Updates.checkForUpdateAsync error:", err);
+    if (throwOnError) {
+      throw err;
+    }
   }
 
   return { updateType: "none", version: appVersion };

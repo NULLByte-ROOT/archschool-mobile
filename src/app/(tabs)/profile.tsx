@@ -32,6 +32,7 @@ import { AppText, Avatar } from "@/components/ui";
 import { Corners, IconTile, Kicker, MonoLabel, Panel, PulseDot } from "@/components/webui";
 import { fmtNum, lastSeenLabel, parseDue } from "@/lib/format";
 import { isOwner, isStaff } from "@/lib/roles";
+import { checkForUpdates, downloadOtaBundle, openApkDownload, restartApp } from "@/lib/updater";
 import { useAuthStore } from "@/store/auth";
 import {
   colors,
@@ -290,27 +291,51 @@ export default function ProfileScreen() {
 
   const checkForUpdate = async () => {
     if (checkingUpdate) return;
-    if (!Updates.isEnabled) {
-      Alert.alert(
-        "به‌روزرسانی",
-        "در این نسخه (Expo Go یا development build) به‌روزرسانی هوایی فعال نیست. نسخهٔ نصب‌شده از EAS به‌طور خودکار بررسی می‌شود."
-      );
-      return;
-    }
     setCheckingUpdate(true);
     try {
-      const result = await Updates.checkForUpdateAsync();
-      if (result.isAvailable) {
-        await Updates.fetchUpdateAsync();
-        Alert.alert("به‌روزرسانی آماده است", "برای اعمال نسخهٔ تازه، برنامه بازنشانی شود؟", [
-          { text: "بعداً", style: "cancel" },
-          { text: "بازنشانی", onPress: () => void Updates.reloadAsync() },
-        ]);
-      } else {
-        Alert.alert("به‌روزرسانی", "نسخهٔ نصب‌شده به‌روز است.");
+      const checkResult = await checkForUpdates(5000, true);
+
+      if (checkResult.updateType === "apk") {
+        Alert.alert(
+          "ارتقای نسخه اصلی برنامه",
+          checkResult.releaseNotes || "نسخه جدید فایل نصبی (APK) منتشر شده است.",
+          [
+            { text: "بعداً", style: "cancel" },
+            {
+              text: "دانلود و نصب مستقیم APK",
+              onPress: () => void openApkDownload(checkResult.apkUrl),
+            },
+          ]
+        );
+        return;
       }
-    } catch {
-      Alert.alert("به‌روزرسانی", "بررسی به‌روزرسانی ممکن نشد. بعداً تلاش کن.");
+
+      if (checkResult.updateType === "ota") {
+        const fetched = await downloadOtaBundle(checkResult);
+        if (fetched) {
+          Alert.alert("به‌روزرسانی آماده است", "برای اعمال نسخهٔ تازه، برنامه بازنشانی شود؟", [
+            { text: "بعداً", style: "cancel" },
+            { text: "بازنشانی", onPress: () => void restartApp() },
+          ]);
+        } else {
+          Alert.alert("به‌روزرسانی", "دریافت فایل به‌روزرسانی انجام نشد. اتصال اینترنت را بررسی کنید.");
+        }
+        return;
+      }
+
+      if (!Updates.isEnabled) {
+        Alert.alert(
+          "به‌روزرسانی",
+          "نسخهٔ فایل نصبی به‌روز است. (توجه: به‌روزرسانی هوایی تنها در بیلد Release فعال است)."
+        );
+        return;
+      }
+
+      Alert.alert("به‌روزرسانی", "نسخهٔ نصب‌شده به‌روز است.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn("[profile] checkForUpdate error:", msg);
+      Alert.alert("به‌روزرسانی", `بررسی به‌روزرسانی ممکن نشد: ${msg}`);
     } finally {
       setCheckingUpdate(false);
     }
