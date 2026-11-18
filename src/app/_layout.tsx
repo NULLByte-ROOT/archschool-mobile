@@ -152,12 +152,9 @@ export default function RootLayout() {
         if (res.updateType === "apk") {
           setUpdateState(res);
         } else if (res.updateType === "ota") {
-          // Download bundle with a bounded timeout
-          const downloadPromise = downloadOtaBundle(res);
-          const timeoutPromise = new Promise<boolean>((resolve) =>
-            setTimeout(() => resolve(false), 7000)
-          );
-          const success = await Promise.race([downloadPromise, timeoutPromise]);
+          // Allow splash screen to reveal immediately while OTA downloads in background
+          setUpdateChecked(true);
+          const success = await downloadOtaBundle(res);
           if (active && success) {
             setUpdateState({ ...res, otaReady: true });
           }
