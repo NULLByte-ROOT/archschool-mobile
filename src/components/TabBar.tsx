@@ -38,12 +38,12 @@ const TABS: Record<string, { label: string; icon: IconName; activeIcon: IconName
   profile: { label: "پروفایل", icon: "person-circle-outline", activeIcon: "person-circle" },
 };
 
-const LOZENGE_TOP = 11;
-const LOZENGE_HEIGHT = tabBarHeight - LOZENGE_TOP * 2;
-const BUBBLE_WIDTH = 64;
+const LOZENGE_TOP = 6;
+const LOZENGE_HEIGHT = tabBarHeight - LOZENGE_TOP * 2; // 64 - 12 = 52px
+const PADDING_H = 6;
 
 /** Snappy, natural spring for the tab selection bubble */
-const SPRING = { damping: 22, stiffness: 260, mass: 0.8 } as const;
+const SPRING = { damping: 24, stiffness: 280, mass: 0.8 } as const;
 
 function TabItem({
   routeName,
@@ -134,18 +134,21 @@ function ChatTabBadge({ focused }: { focused: boolean }) {
 
 export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarProps) {
   const count = state.routes.length;
-  const initialWidth = Dimensions.get("window").width - tabBarMargin * 2 - 16;
+  const initialWidth = Dimensions.get("window").width - tabBarMargin * 2;
   const [containerWidth, setContainerWidth] = useState(initialWidth);
 
-  // Tab width inside the items row
-  const tabWidth = containerWidth > 0 ? containerWidth / count : 64;
-  const bubbleWidth = Math.min(tabWidth - 6, BUBBLE_WIDTH);
+  // Available width inside items excluding horizontal padding
+  const availableWidth = Math.max(0, containerWidth - PADDING_H * 2);
+  const itemWidth = count > 0 ? availableWidth / count : 64;
+  // Sized generously around the icon and label
+  const bubbleWidth = Math.min(Math.round(itemWidth * 0.94), 72);
 
   // Compute exact center for the active index in row-reverse (RTL):
   // Index 0 ("home") is at the far right (slot count - 1)
   // Index count - 1 ("profile") is at the far left (slot 0)
   const slotIndex = count - 1 - state.index;
-  const targetX = slotIndex * tabWidth + (tabWidth - bubbleWidth) / 2;
+  const slotCenter = PADDING_H + slotIndex * itemWidth + itemWidth / 2;
+  const targetX = slotCenter - bubbleWidth / 2;
 
   const bubbleX = useSharedValue(targetX);
 
@@ -272,19 +275,19 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row-reverse",
     alignItems: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: PADDING_H,
   },
   bubble: {
     position: "absolute",
-    left: 8,
+    left: 0,
     top: LOZENGE_TOP,
     height: LOZENGE_HEIGHT,
     borderRadius: LOZENGE_HEIGHT / 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.22)",
-    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.26)",
+    backgroundColor: "rgba(255,255,255,0.11)",
     overflow: "hidden",
-    elevation: 3,
+    elevation: 4,
   },
   item: {
     flex: 1,
