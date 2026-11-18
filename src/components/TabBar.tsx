@@ -169,17 +169,16 @@ export function TabBar({ state, emitter, navigateToTab, insets }: BottomTabBarPr
       ]}
     >
       <View style={styles.pill}>
-        {Platform.OS === "ios" ? (
-          <BlurView
-            intensity={70}
-            tint="systemChromeMaterialDark"
-            blurMethod="dimezisBlurViewSdk31Plus"
-            style={StyleSheet.absoluteFill}
-          />
-        ) : null}
+        <BlurView
+          intensity={Platform.OS === "ios" ? 75 : 55}
+          tint="systemChromeMaterialDark"
+          blurMethod="dimezisBlurViewSdk31Plus"
+          experimentalBlurMethod="dimezisBlurViewSdk31Plus"
+          style={StyleSheet.absoluteFill}
+        />
         <View style={styles.pillTint} pointerEvents="none" />
         <LinearGradient
-          colors={["rgba(255,255,255,0.18)", "rgba(255,255,255,0)"]}
+          colors={["rgba(255,255,255,0.22)", "rgba(255,255,255,0.03)", "rgba(255,255,255,0)"]}
           pointerEvents="none"
           style={styles.sheen}
         />
@@ -249,9 +248,10 @@ const styles = StyleSheet.create({
   pill: {
     height: tabBarHeight,
     borderRadius: tabBarHeight / 2,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.14)",
-    backgroundColor: "rgba(12,12,16,0.65)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255,255,255,0.18)",
+    borderTopColor: "rgba(255,255,255,0.34)",
+    backgroundColor: Platform.OS === "ios" ? "rgba(12,12,18,0.32)" : "rgba(12,12,18,0.45)",
     overflow: "hidden",
     boxShadow: shadows.glass,
   },
@@ -262,14 +262,14 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor:
-      Platform.OS === "ios" ? "rgba(10,10,14,0.34)" : "rgba(10,10,14,0.92)",
+      Platform.OS === "ios" ? "rgba(10,10,14,0.16)" : "rgba(10,10,14,0.22)",
   },
   sheen: {
     position: "absolute",
     top: 0,
     left: 16,
     right: 16,
-    height: 20,
+    height: 24,
   },
   items: {
     flex: 1,
@@ -283,9 +283,10 @@ const styles = StyleSheet.create({
     top: LOZENGE_TOP,
     height: LOZENGE_HEIGHT,
     borderRadius: LOZENGE_HEIGHT / 2,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.26)",
-    backgroundColor: "rgba(255,255,255,0.11)",
+    borderWidth: 1.2,
+    borderColor: "rgba(255,255,255,0.24)",
+    borderTopColor: "rgba(255,255,255,0.40)",
+    backgroundColor: "rgba(255,255,255,0.13)",
     overflow: "hidden",
     elevation: 4,
   },
