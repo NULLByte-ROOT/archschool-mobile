@@ -12,11 +12,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { AppState, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { UpdateModal } from "@/components/UpdateModal";
+import { checkForUpdates, downloadOtaBundle, type UpdateCheckResponse } from "@/lib/updater";
 import {
   useNotificationObserver,
   usePushRegistration,
@@ -132,12 +134,55 @@ export default function RootLayout() {
     Vazirmatn_900Black,
   });
   const hydrated = useAuthStore((state) => state.hydrated);
+  const [updateState, setUpdateState] = useState<UpdateCheckResponse | null>(null);
+  const [updateChecked, setUpdateChecked] = useState(false);
 
   useEffect(() => {
     void useAuthStore.getState().hydrate();
   }, []);
 
-  const ready = (fontsLoaded || Boolean(fontError)) && hydrated;
+  // Silent update check at startup before main content reveals
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const res = await checkForUpdates(3500);
+        if (!active) return;
+
+        if (res.updateType === "apk") {
+          setUpdateState(res);
+        } else if (res.updateType === "ota") {
+          // Download bundle with a bounded timeout
+          const downloadPromise = downloadOtaBundle(res);
+          const timeoutPromise = new Promise<boolean>((resolve) =>
+            setTimeout(() => resolve(false), 7000)
+          );
+          const success = await Promise.race([downloadPromise, timeoutPromise]);
+          if (active && success) {
+            setUpdateState({ ...res, otaReady: true });
+          }
+        }
+      } catch {
+        // Fallback to offline / existing bundle gracefully
+      } finally {
+        if (active) {
+          setUpdateChecked(true);
+        }
+      }
+    })();
+
+    // Safety fallback: ensure splash always unlocks even on extreme lag
+    const safetyTimer = setTimeout(() => {
+      if (active) setUpdateChecked(true);
+    }, 5000);
+
+    return () => {
+      active = false;
+      clearTimeout(safetyTimer);
+    };
+  }, []);
+
+  const ready = (fontsLoaded || Boolean(fontError)) && hydrated && updateChecked;
 
   useEffect(() => {
     if (ready) {
@@ -153,6 +198,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <StatusBar style="light" />
           <AppShell ready={ready} />
+          <UpdateModal state={updateState} onDismiss={() => setUpdateState(null)} />
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
