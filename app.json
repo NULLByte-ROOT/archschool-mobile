@@ -73,6 +73,9 @@
       "policy": "appVersion"
     },
     "extra": {
+      "eas": {
+        "projectId": "b1760d58-a243-4784-a6ce-550590c5a82a"
+      },
       "apiUrl": "https://archschool.vidxsepehr.ir/api",
       "router": {
         "asyncRoutes": {

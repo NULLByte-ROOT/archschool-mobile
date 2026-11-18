@@ -27,7 +27,7 @@ function projectId(): string {
   // `easConfig` exists on builds produced by EAS; Expo Go has neither.
   const fromEas = (Constants as unknown as { easConfig?: { projectId?: string } })
     .easConfig?.projectId;
-  return (fromConfig || fromEas || "").trim();
+  return (fromConfig || fromEas || "b1760d58-a243-4784-a6ce-550590c5a82a").trim();
 }
 
 async function ensureAndroidChannels(): Promise<void> {
