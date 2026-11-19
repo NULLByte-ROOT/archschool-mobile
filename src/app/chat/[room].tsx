@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, memo, useRef, useState, type ComponentProps, type ComponentRef, type ReactNode } from "react";
 import {
   Alert,
   Animated,
@@ -126,11 +126,11 @@ function SwipeReply({
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dx) > 12 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
+          Math.abs(gesture.dx) > 22 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2.2,
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
-          Math.abs(gesture.dx) > 12 &&
-          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3,
+          Math.abs(gesture.dx) > 22 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2.2,
         onPanResponderTerminationRequest: () => false,
         onPanResponderMove: (_, gesture) => {
           const towardCentre = gesture.dx * inward;
@@ -211,27 +211,28 @@ function SwipeReply({
   );
 }
 
-function MessageBubble({
-  message,
-  own,
-  showAuthor,
-  showDate,
-  onLongPress,
-  onImagePress,
-  onReply,
-  onProfile,
-  onSeenInfo,
-}: {
-  message: Message;
-  own: boolean;
-  showAuthor: boolean;
-  showDate: boolean;
-  onLongPress: (point: { x: number; y: number }) => void;
-  onImagePress: (url: string) => void;
-  onReply: () => void;
-  onProfile: (userId: number) => void;
-  onSeenInfo: (message: Message) => void;
-}) {
+const MessageBubble = memo(
+  function MessageBubble({
+    message,
+    own,
+    showAuthor,
+    showDate,
+    onLongPress,
+    onImagePress,
+    onReply,
+    onProfile,
+    onSeenInfo,
+  }: {
+    message: Message;
+    own: boolean;
+    showAuthor: boolean;
+    showDate: boolean;
+    onLongPress: (point: { x: number; y: number }) => void;
+    onImagePress: (url: string) => void;
+    onReply: () => void;
+    onProfile: (userId: number) => void;
+    onSeenInfo: (message: Message) => void;
+  }) {
   const image = message.file_url ? resolveMediaUrl(message.file_url) : null;
   // Telegram ticks: one tick = delivered, double = at least one reader.
   const seenCount = message.seen_by?.length ?? 0;
@@ -379,7 +380,17 @@ function MessageBubble({
       </View>
     </View>
   );
-}
+},
+(prev, next) =>
+  prev.message.id === next.message.id &&
+  prev.message.content === next.message.content &&
+  prev.message.edited_at === next.message.edited_at &&
+  prev.message.file_url === next.message.file_url &&
+  (prev.message.seen_by?.length ?? 0) === (next.message.seen_by?.length ?? 0) &&
+  prev.own === next.own &&
+  prev.showAuthor === next.showAuthor &&
+  prev.showDate === next.showDate
+);
 
 /**
  * Glass room header.
@@ -1085,24 +1096,34 @@ export default function ChatRoomScreen() {
       )
     : 0;
 
-  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
-    const older = data[index + 1];
-    const showAuthor = !older || older.sender_id !== item.sender_id;
-    const showDate = !older || dayKey(older.created_at) !== dayKey(item.created_at);
-    return (
-      <MessageBubble
-        message={item}
-        own={item.sender_id === user?.id}
-        showAuthor={showAuthor}
-        showDate={showDate}
-        onLongPress={(point) => setMenuAnchor({ message: item, ...point })}
-        onImagePress={openImage}
-        onReply={() => startReply(item)}
-        onProfile={setProfileId}
-        onSeenInfo={setInfoMessage}
-      />
-    );
-  };
+  const handleBubbleLongPress = useCallback(
+    (anchor: { message: Message; x: number; y: number }) => {
+      setMenuAnchor(anchor);
+    },
+    []
+  );
+
+  const renderMessage = useCallback(
+    ({ item, index }: { item: Message; index: number }) => {
+      const older = data[index + 1];
+      const showAuthor = !older || older.sender_id !== item.sender_id;
+      const showDate = !older || dayKey(older.created_at) !== dayKey(item.created_at);
+      return (
+        <MessageBubble
+          message={item}
+          own={item.sender_id === user?.id}
+          showAuthor={showAuthor}
+          showDate={showDate}
+          onLongPress={(point) => handleBubbleLongPress({ message: item, ...point })}
+          onImagePress={openImage}
+          onReply={() => startReply(item)}
+          onProfile={setProfileId}
+          onSeenInfo={setInfoMessage}
+        />
+      );
+    },
+    [data, user?.id, handleBubbleLongPress, openImage, startReply, setProfileId, setInfoMessage]
+  );
 
   if (blocked) {
     return (
@@ -1208,12 +1229,21 @@ export default function ChatRoomScreen() {
           <FlashList<Message>
             data={data}
             inverted
+            getItemType={(item) =>
+              item.file_url
+                ? "media"
+                : item.sender_id === user?.id
+                  ? "own"
+                  : "other"
+            }
             keyExtractor={(item) => String(item.id)}
             renderItem={renderMessage}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            removeClippedSubviews={true}
+            drawDistance={250}
           />
         )}
 

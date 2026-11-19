@@ -120,7 +120,7 @@ function WelcomeCard({ username, now }: { username: string; now: number }) {
 /* 2. Streak hero                                                      */
 /* ------------------------------------------------------------------ */
 
-function FlameGlyph({ atRisk }: { atRisk: boolean }) {
+function FlameGlyph({ atRisk, completedToday }: { atRisk: boolean; completedToday?: boolean }) {
   const scale = useSharedValue(1);
   const rotate = useSharedValue(0);
 
@@ -149,7 +149,7 @@ function FlameGlyph({ atRisk }: { atRisk: boolean }) {
       <Ionicons
         name="flame"
         size={40}
-        color={atRisk ? colors.danger : colors.flame}
+        color={atRisk ? colors.danger : completedToday ? "#34d399" : colors.flame}
       />
     </Animated.View>
   );
@@ -183,6 +183,7 @@ function StreakHero({
   best,
   teamRecord,
   atRisk,
+  completedToday,
   onOpen,
   onFix,
 }: {
@@ -190,14 +191,19 @@ function StreakHero({
   best: number;
   teamRecord: number;
   atRisk: boolean;
+  completedToday?: boolean;
   onOpen: () => void;
   onFix: () => void;
 }) {
+  const isGreen = Boolean(completedToday && !atRisk);
+
   const subtitle = atRisk
     ? "امروز هنوز هیچ تکلیفی را انجام ندادی."
-    : streak > 0
-      ? "استریکت را حفظ کردی — همین‌طور ادامه بده 🔥"
-      : "امروز اولین روز استریک جدیدت می‌تواند باشد.";
+    : isGreen
+      ? "استریک امروزت ثبت شده — فوق‌العاده‌ای! ✨"
+      : streak > 0
+        ? "استریکت را حفظ کردی — همین‌طور ادامه بده 🔥"
+        : "امروز اولین روز استریک جدیدت می‌تواند باشد.";
 
   return (
     <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel="استریک من">
@@ -205,8 +211,16 @@ function StreakHero({
         style={[
           st.hero,
           {
-            borderColor: atRisk ? colors.heroRiskLine : colors.heroCalmLine,
-            backgroundColor: atRisk ? colors.heroRiskBg : colors.heroCalmBg,
+            borderColor: atRisk
+              ? colors.heroRiskLine
+              : isGreen
+                ? "rgba(52,211,153,0.40)"
+                : colors.heroCalmLine,
+            backgroundColor: atRisk
+              ? colors.heroRiskBg
+              : isGreen
+                ? "rgba(16,185,129,0.08)"
+                : colors.heroCalmBg,
           },
         ]}
       >
@@ -215,7 +229,9 @@ function StreakHero({
           colors={
             atRisk
               ? ["rgba(239,68,68,0.20)", "rgba(239,68,68,0)"]
-              : ["rgba(249,115,22,0.20)", "rgba(245,158,11,0)"]
+              : isGreen
+                ? ["rgba(52,211,153,0.22)", "rgba(16,185,129,0.05)", "transparent"]
+                : ["rgba(249,115,22,0.20)", "rgba(245,158,11,0)"]
           }
           start={{ x: 0.75, y: 0 }}
           end={{ x: 0.2, y: 1 }}
@@ -231,18 +247,32 @@ function StreakHero({
                 {
                   borderColor: atRisk
                     ? "rgba(248,113,113,0.35)"
-                    : "rgba(251,146,60,0.35)",
+                    : isGreen
+                      ? "rgba(52,211,153,0.45)"
+                      : "rgba(251,146,60,0.35)",
                   backgroundColor: atRisk
                     ? "rgba(239,68,68,0.14)"
-                    : "rgba(249,115,22,0.14)",
+                    : isGreen
+                      ? "rgba(52,211,153,0.18)"
+                      : "rgba(249,115,22,0.14)",
                 },
               ]}
             >
-              <FlameGlyph atRisk={atRisk} />
+              <FlameGlyph atRisk={atRisk} completedToday={isGreen} />
             </View>
 
             <View style={{ flex: 1, minWidth: 0 }}>
-              <MonoLabel>// MY STREAK</MonoLabel>
+              <View style={{ flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between" }}>
+                <MonoLabel>// MY STREAK</MonoLabel>
+                {isGreen ? (
+                  <View style={st.streakDoneBadge}>
+                    <Ionicons name="checkmark-circle" size={11} color="#34d399" />
+                    <AppText color="#34d399" style={{ fontFamily: fonts.bold, fontSize: 9.5 }}>
+                      ثبت امروز
+                    </AppText>
+                  </View>
+                ) : null}
+              </View>
               <View style={st.streakRow}>
                 <AppText
                   ltr
@@ -251,13 +281,13 @@ function StreakHero({
                     fontSize: 58,
                     lineHeight: 62,
                     fontVariant: ["tabular-nums"],
-                    color: atRisk ? "#fca5a5" : colors.flame,
+                    color: atRisk ? "#fca5a5" : isGreen ? "#34d399" : colors.flame,
                   }}
                 >
                   {fmtNum(streak)}
                 </AppText>
                 <AppText
-                  color="rgba(254,215,170,0.80)"
+                  color={isGreen ? "#a7f3d0" : "rgba(254,215,170,0.80)"}
                   style={{
                     fontFamily: fonts.bold,
                     fontSize: 14,
@@ -269,7 +299,7 @@ function StreakHero({
                 </AppText>
               </View>
               <AppText
-                color={colors.faint}
+                color={isGreen ? "#6ee7b7" : colors.faint}
                 style={{ fontSize: 12, lineHeight: 20, marginTop: 2 }}
               >
                 {subtitle}
@@ -356,13 +386,20 @@ function AssignmentsCta({
   onOpen,
   overduePromptItems = [],
   onResolveOverdue,
+  onRejectAllOverdue,
 }: {
   pending: number;
   urgent: number;
   onOpen: () => void;
   overduePromptItems?: Assignment[];
   onResolveOverdue?: (id: number, completed: boolean) => Promise<void>;
+  onRejectAllOverdue?: () => Promise<void>;
 }) {
+  const promptTitle =
+    overduePromptItems.length > 1
+      ? "این‌ها رو انجام داده بودی یا نه؟"
+      : "این رو انجام داده بودی یا نه؟";
+
   return (
     <View style={st.cta}>
       <LinearGradient
@@ -407,60 +444,81 @@ function AssignmentsCta({
         <View style={st.overduePromptCard}>
           <View style={st.overduePromptHeader}>
             <View style={st.overduePromptHeaderRight}>
-              <Ionicons name="help-circle" size={17} color="#fbbf24" />
-              <AppText style={st.overduePromptTitle}>
-                این رو انجام داده بودی یا نه؟
-              </AppText>
+              <View style={st.overduePromptIconWrap}>
+                <Ionicons name="time-outline" size={13} color={colors.accent} />
+              </View>
+              <View>
+                <MonoLabel>// OVERDUE CHECK</MonoLabel>
+                <AppText style={st.overduePromptTitle}>
+                  {promptTitle}
+                </AppText>
+              </View>
             </View>
-            <View style={st.overduePromptBadge}>
-              <AppText style={st.overduePromptBadgeText}>
-                {fmtNum(overduePromptItems.length)} مورد
-              </AppText>
-            </View>
+            {overduePromptItems.length > 1 && onRejectAllOverdue ? (
+              <Pressable
+                onPress={() => void onRejectAllOverdue()}
+                style={({ pressed }) => [st.btnDismissAll, pressed && { opacity: 0.6 }]}
+                accessibilityRole="button"
+                accessibilityLabel="رد همه به عنوان انجام نشده"
+              >
+                <AppText color={colors.faint} style={st.btnDismissAllText}>
+                  رد همه
+                </AppText>
+              </Pressable>
+            ) : null}
           </View>
 
           <View style={st.overduePromptList}>
             {overduePromptItems.map((item) => (
               <View key={item.id} style={st.overduePromptItem}>
                 <View style={st.overduePromptItemTop}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
                     <AppText
                       numberOfLines={1}
                       style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 19 }}
                     >
                       {item.title}
                     </AppText>
-                    <AppText
-                      numberOfLines={1}
-                      color={colors.faint}
-                      style={{ fontSize: 11, lineHeight: 16, marginTop: 2 }}
-                    >
-                      {subjectName(item.subject_id ?? "", item.course ?? "")}
-                      {item.due_date ? ` · مهلت: ${relativeDue(item.due_date)}` : ""}
-                    </AppText>
+                    <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 6 }}>
+                      <AppText
+                        numberOfLines={1}
+                        color={colors.faint}
+                        style={{ fontSize: 11, lineHeight: 16 }}
+                      >
+                        {subjectName(item.subject_id ?? "", item.course ?? "")}
+                      </AppText>
+                      {item.due_date ? (
+                        <>
+                          <AppText color={colors.faint} style={{ fontSize: 10 }}>·</AppText>
+                          <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
+                            {relativeDue(item.due_date)}
+                          </AppText>
+                        </>
+                      ) : null}
+                    </View>
                   </View>
-                </View>
 
-                <View style={st.overduePromptActions}>
-                  <Pressable
-                    onPress={() => void onResolveOverdue?.(item.id, true)}
-                    style={({ pressed }) => [st.promptBtnYes, pressed && { opacity: 0.7 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel="بله انجام دادم"
-                  >
-                    <Ionicons name="checkmark" size={14} color="#34d399" />
-                    <AppText style={st.promptBtnYesText}>بله انجام دادم</AppText>
-                  </Pressable>
+                  <View style={st.overduePromptActions}>
+                    <Pressable
+                      onPress={() => void onResolveOverdue?.(item.id, true)}
+                      style={({ pressed }) => [st.promptBtnYes, pressed && { opacity: 0.7 }]}
+                      accessibilityRole="button"
+                      accessibilityLabel="بله انجام دادم"
+                    >
+                      <Ionicons name="checkmark" size={12} color="#34d399" />
+                      <AppText style={st.promptBtnYesText}>انجام دادم</AppText>
+                    </Pressable>
 
-                  <Pressable
-                    onPress={() => void onResolveOverdue?.(item.id, false)}
-                    style={({ pressed }) => [st.promptBtnNo, pressed && { opacity: 0.7 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel="نه انجام ندادم"
-                  >
-                    <Ionicons name="close" size={14} color="#f87171" />
-                    <AppText style={st.promptBtnNoText}>نه، ندادم</AppText>
-                  </Pressable>
+                    <Pressable
+                      onPress={() => void onResolveOverdue?.(item.id, false)}
+                      style={({ pressed }) => [st.promptBtnNo, pressed && { opacity: 0.7 }]}
+                      accessibilityRole="button"
+                      accessibilityLabel="نه انجام ندادم"
+                    >
+                      <Ionicons name="close" size={12} color={colors.textSoft} />
+                      <AppText style={st.promptBtnNoText}>ندادم</AppText>
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             ))}
@@ -1099,14 +1157,14 @@ export default function DashboardScreen() {
       });
   }, [assignments.data, resolvedLoaded, resolvedOverdueIds, now]);
 
-  // Limit to 4 items: if more than 4, excess items automatically get marked as uncompleted / resolved
+  // If 4 or more overdue items, auto-reject ALL of them as uncompleted into "overdue"
   useEffect(() => {
     if (!user?.id || !resolvedLoaded) return;
-    if (unpromptedOverdue.length > 4) {
-      const excessIds = unpromptedOverdue.slice(4).map((item) => item.id);
+    if (unpromptedOverdue.length >= 4) {
+      const allIds = unpromptedOverdue.map((item) => item.id);
       setResolvedOverdueIds((prev) => {
         const next = new Set(prev);
-        for (const id of excessIds) next.add(id);
+        for (const id of allIds) next.add(id);
         void SecureStore.setItemAsync(
           `archschool_resolved_overdue_${user.id}`,
           JSON.stringify(Array.from(next))
@@ -1117,7 +1175,7 @@ export default function DashboardScreen() {
   }, [unpromptedOverdue, user?.id, resolvedLoaded]);
 
   const overduePromptItems = useMemo(
-    () => unpromptedOverdue.slice(0, 4),
+    () => (unpromptedOverdue.length < 4 ? unpromptedOverdue : []),
     [unpromptedOverdue]
   );
 
@@ -1146,6 +1204,21 @@ export default function DashboardScreen() {
         return next;
       });
     } catch {}
+  };
+
+  const handleRejectAllOverdue = async () => {
+    if (!user?.id || overduePromptItems.length === 0) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    const ids = overduePromptItems.map((item) => item.id);
+    setResolvedOverdueIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) next.add(id);
+      void SecureStore.setItemAsync(
+        `archschool_resolved_overdue_${user.id}`,
+        JSON.stringify(Array.from(next))
+      ).catch(() => undefined);
+      return next;
+    });
   };
 
   const refreshing =
@@ -1272,6 +1345,7 @@ export default function DashboardScreen() {
               best={me.best_streak}
               teamRecord={overview.data?.team_record_streak ?? 0}
               atRisk={me.streak_at_risk}
+              completedToday={Boolean(me.completed_today || (!me.streak_at_risk && me.current_streak > 0))}
               onOpen={() => router.push("/leaderboard")}
               onFix={() => router.push("/assignments")}
             />
@@ -1295,6 +1369,7 @@ export default function DashboardScreen() {
             onOpen={() => router.push("/assignments")}
             overduePromptItems={overduePromptItems}
             onResolveOverdue={handleResolveOverdue}
+            onRejectAllOverdue={handleRejectAllOverdue}
           />
         </Animated.View>
 
@@ -1432,6 +1507,17 @@ const st = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1,
   },
+  streakDoneBadge: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: "rgba(52,211,153,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(52,211,153,0.30)",
+  },
   streakRow: { flexDirection: "row-reverse", alignItems: "flex-end", gap: 8 },
   heroGrid: {
     flexDirection: "row-reverse",
@@ -1514,10 +1600,10 @@ const st = StyleSheet.create({
     paddingVertical: 10,
   },
   overduePromptCard: {
-    borderRadius: 14,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.30)",
-    backgroundColor: "rgba(251,191,36,0.06)",
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(0,0,0,0.28)",
     padding: 12,
     gap: 10,
   },
@@ -1529,87 +1615,92 @@ const st = StyleSheet.create({
   overduePromptHeaderRight: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+  },
+  overduePromptIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   overduePromptTitle: {
     fontFamily: fonts.bold,
-    fontSize: 13,
-    lineHeight: 19,
-    color: "#fef08a",
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.text,
   },
-  overduePromptBadge: {
+  btnDismissAll: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: "rgba(251,191,36,0.18)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
-    borderColor: "rgba(251,191,36,0.35)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  overduePromptBadgeText: {
-    fontFamily: fonts.semibold,
-    fontSize: 10,
-    lineHeight: 14,
-    color: "#fbbf24",
+  btnDismissAllText: {
+    fontFamily: fonts.medium,
+    fontSize: 10.5,
+    lineHeight: 15,
   },
   overduePromptList: {
-    gap: 8,
+    gap: 6,
   },
   overduePromptItem: {
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    backgroundColor: "rgba(0,0,0,0.35)",
-    padding: 10,
-    gap: 8,
+    borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(255,255,255,0.02)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   overduePromptItemTop: {
     flexDirection: "row-reverse",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
   overduePromptActions: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 8,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    gap: 6,
   },
   promptBtnYes: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(52,211,153,0.14)",
+    backgroundColor: "rgba(52,211,153,0.12)",
     borderWidth: 1,
-    borderColor: "rgba(52,211,153,0.35)",
+    borderColor: "rgba(52,211,153,0.28)",
   },
   promptBtnYesText: {
     fontFamily: fonts.bold,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10.5,
+    lineHeight: 15,
     color: "#34d399",
   },
   promptBtnNo: {
     flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "rgba(248,113,113,0.10)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
-    borderColor: "rgba(248,113,113,0.25)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
   promptBtnNoText: {
     fontFamily: fonts.medium,
-    fontSize: 11,
-    lineHeight: 16,
-    color: "#f87171",
+    fontSize: 10.5,
+    lineHeight: 15,
+    color: colors.textSoft,
   },
 
   /* panels */
