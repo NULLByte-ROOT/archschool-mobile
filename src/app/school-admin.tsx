@@ -39,7 +39,7 @@ import {
 } from "@/theme/tokens";
 
 const AI_PROVIDERS = [
-  { id: "groq", label: "Groq (فوق‌سریع)", baseUrl: "https://api.groq.com/openai/v1", defaultModel: "llama-3.3-70b-versatile" },
+  { id: "groq", label: "Groq (فوق‌سریع)", baseUrl: "https://api.groq.com/openai/v1", defaultModel: "openai/gpt-oss-120b" },
   { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini" },
   { id: "xai", label: "Grok (xAI)", baseUrl: "https://api.x.ai/v1", defaultModel: "grok-2" },
   { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", defaultModel: "deepseek-chat" },
@@ -512,7 +512,7 @@ export default function SchoolAdminScreen() {
               <TextInput
                 value={aiModel}
                 onChangeText={setAiModel}
-                placeholder="llama-3.3-70b-versatile یا openai/gpt-4o-mini یا grok-2"
+                placeholder="openai/gpt-oss-120b یا openai/gpt-oss-20b یا qwen/qwen3.8-27b"
                 placeholderTextColor={colors.faint}
                 style={[styles.textInput, { fontFamily: fonts.medium }]}
                 textAlign="left"
