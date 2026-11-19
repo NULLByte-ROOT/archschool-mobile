@@ -18,8 +18,6 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { UpdateModal } from "@/components/UpdateModal";
-import { GyroDustOverlay } from "@/components/GyroDustOverlay";
-import { useSharedValue } from "react-native-reanimated";
 import { checkForUpdates, downloadOtaBundle, type UpdateCheckResponse } from "@/lib/updater";
 import {
   useNotificationObserver,
@@ -189,48 +187,15 @@ export default function RootLayout() {
     }
   }, [ready]);
 
-  const touchX = useSharedValue(0);
-  const touchY = useSharedValue(0);
-  const touchActive = useSharedValue(0);
-
-  const handleTouchStart = (e: any) => {
-    const t = e.nativeEvent?.touches?.[0];
-    if (t) {
-      touchX.value = t.pageX;
-      touchY.value = t.pageY;
-      touchActive.value = 1;
-    }
-  };
-
-  const handleTouchMove = (e: any) => {
-    const t = e.nativeEvent?.touches?.[0];
-    if (t) {
-      touchX.value = t.pageX;
-      touchY.value = t.pageY;
-      touchActive.value = 1;
-    }
-  };
-
-  const handleTouchEnd = () => {
-    touchActive.value = 0;
-  };
-
   if (!ready) return null;
 
   return (
-    <GestureHandlerRootView
-      style={styles.root}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
-    >
+    <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <StatusBar style="light" />
           <AppShell ready={ready} />
           <UpdateModal state={updateState} onDismiss={() => setUpdateState(null)} />
-          <GyroDustOverlay touchX={touchX} touchY={touchY} touchActive={touchActive} />
         </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
