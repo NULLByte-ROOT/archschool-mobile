@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Pressable,
   ScrollView,
@@ -16,11 +19,13 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  addAttachment,
   ApiError,
   createAssignment,
   fetchAssignment,
   qk,
   updateAssignment,
+  uploadFile,
 } from "@/api/client";
 import { Screen } from "@/components/Screen";
 import { SelectSheet, type SelectOption } from "@/components/SelectSheet";
@@ -152,7 +157,12 @@ export default function NewAssignmentScreen() {
   const [dueOpen, setDueOpen] = useState(false);
   const [viewWeek, setViewWeek] = useState(1);
 
+  const [selectedImages, setSelectedImages] = useState<
+    Array<{ uri: string; name: string; type: string; size?: number }>
+  >([]);
+
   const [saving, setSaving] = useState(false);
+  const [savingStatus, setSavingStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(!editing);
 
@@ -207,6 +217,39 @@ export default function NewAssignmentScreen() {
     }
   };
 
+  const pickImages = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsMultipleSelection: true,
+        quality: 0.82,
+        selectionLimit: 5,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        void Haptics.selectionAsync().catch(() => undefined);
+        const mapped = result.assets.map((asset) => {
+          const tail = asset.uri.split("?")[0].split("/").pop() ?? "";
+          const ext = tail.split(".").pop()?.toLowerCase() || "jpg";
+          return {
+            uri: asset.uri,
+            name: asset.fileName || `task-${Date.now()}.${ext}`,
+            type: asset.mimeType || "image/jpeg",
+            size: asset.fileSize ?? undefined,
+          };
+        });
+        setSelectedImages((prev) => [...prev, ...mapped].slice(0, 5));
+      }
+    } catch {
+      Alert.alert("خطا", "دسترسی به گالری تصاویر امکان‌پذیر نشد.");
+    }
+  };
+
+  const removeImage = (index: number) => {
+    void Haptics.selectionAsync().catch(() => undefined);
+    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const submit = () => {
     setError(null);
     if (!category || !subtype) {
@@ -221,6 +264,28 @@ export default function NewAssignmentScreen() {
     setSaving(true);
     void (async () => {
       try {
+        let attachment_urls: Array<{ file_url: string; file_name?: string }> = [];
+
+        // Upload any picked images
+        if (selectedImages.length > 0 && !editing) {
+          setSavingStatus("در حال آپلود تصاویر…");
+          const uploaded = await Promise.all(
+            selectedImages.map((img) =>
+              uploadFile({
+                uri: img.uri,
+                name: img.name,
+                type: img.type,
+                size: img.size,
+              })
+            )
+          );
+          attachment_urls = uploaded.map((u) => ({
+            file_url: u.url,
+            file_name: u.file_name,
+          }));
+        }
+
+        setSavingStatus("در حال ثبت اطلاعات…");
         const payload = {
           title: title.trim() || autoTitle || categoryItemLabel(subtype),
           course: subjectName(subjectId),
@@ -228,10 +293,25 @@ export default function NewAssignmentScreen() {
           category,
           subtype,
           due_date: due,
+          ...(attachment_urls.length > 0 ? { attachment_urls } : {}),
         };
         const saved = editing
           ? await updateAssignment(editId as number, payload)
           : await createAssignment(payload);
+
+        if (editing && selectedImages.length > 0) {
+          setSavingStatus("در حال افزودن تصاویر…");
+          await Promise.all(
+            selectedImages.map((img) =>
+              addAttachment(saved.id, {
+                uri: img.uri,
+                name: img.name,
+                type: img.type,
+                size: img.size,
+              })
+            )
+          );
+        }
 
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
           () => undefined
@@ -250,6 +330,7 @@ export default function NewAssignmentScreen() {
               : "ساخت تکلیف انجام نشد. دوباره تلاش کن."
         );
         setSaving(false);
+        setSavingStatus(null);
       }
     })();
   };
@@ -433,6 +514,84 @@ export default function NewAssignmentScreen() {
                   ) : null}
                 </View>
 
+                {/* تصاویر پیوست */}
+                <View style={{ marginTop: 16 }}>
+                  <View style={{ flexDirection: "row-reverse", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <MonoLabel>تصاویر پیوست (اختیاری)</MonoLabel>
+                    {selectedImages.length > 0 ? (
+                      <AppText ltr color={colors.faint} style={{ fontSize: 10 }}>
+                        {selectedImages.length}/5
+                      </AppText>
+                    ) : null}
+                  </View>
+
+                  {selectedImages.length === 0 ? (
+                    <Pressable
+                      onPress={pickImages}
+                      style={({ pressed }) => [
+                        styles.pickBox,
+                        pressed && { opacity: 0.8 },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel="افزودن تصویر"
+                    >
+                      <View style={styles.pickBoxInner}>
+                        <IconTile name="images-outline" size={36} iconSize={17} tone={colors.amber} />
+                        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                          <AppText color={colors.white} style={{ fontFamily: fonts.semibold, fontSize: 13, lineHeight: 19 }}>
+                            انتخاب تصویر از گالری
+                          </AppText>
+                          <AppText color={colors.faint} style={{ fontSize: 10.5, lineHeight: 15 }}>
+                            عکس صورت سوال یا تمرین (تا حداکثر ۵ تصویر)
+                          </AppText>
+                        </View>
+                        <Ionicons name="add-circle" size={20} color={colors.amber} />
+                      </View>
+                    </Pressable>
+                  ) : (
+                    <View style={styles.thumbStrip}>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.thumbScroll}
+                      >
+                        {selectedImages.map((img, idx) => (
+                          <View key={img.uri} style={styles.thumbWrap}>
+                            <Image
+                              source={{ uri: img.uri }}
+                              style={styles.thumbImage}
+                              contentFit="cover"
+                              transition={120}
+                            />
+                            <Pressable
+                              onPress={() => removeImage(idx)}
+                              style={styles.thumbRemove}
+                              hitSlop={6}
+                              accessibilityRole="button"
+                              accessibilityLabel="حذف تصویر"
+                            >
+                              <Ionicons name="close" size={13} color={colors.white} />
+                            </Pressable>
+                          </View>
+                        ))}
+                        {selectedImages.length < 5 ? (
+                          <Pressable
+                            onPress={pickImages}
+                            style={styles.thumbAddMore}
+                            accessibilityRole="button"
+                            accessibilityLabel="افزودن تصویر دیگر"
+                          >
+                            <Ionicons name="add" size={20} color={colors.amber} />
+                            <AppText color={colors.faint} style={{ fontSize: 10, marginTop: 2 }}>
+                              افزودن
+                            </AppText>
+                          </Pressable>
+                        ) : null}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
                 {error ? (
                   <View style={styles.errorBox}>
                     <Ionicons name="alert-circle" size={14} color={colors.danger} />
@@ -446,8 +605,8 @@ export default function NewAssignmentScreen() {
               <View style={styles.antiCheat}>
                 <Ionicons name="shield-checkmark-outline" size={13} color={colors.success} />
                 <AppText color={colors.faint} style={{ fontSize: 10.5, lineHeight: 17, flex: 1 }}>
-                  اعضا تا ۳۰ دقیقه پس از انتشار نمی‌توانند «انجام شد» بزنند. پیوست فایل از نسخهٔ
-                  وب اضافه می‌شود.
+                  اعضا تا ۳۰ دقیقه پس از انتشار نمی‌توانند «انجام شد» بزنند. تصاویر پیوست‌شده در
+                  کارت تکلیف و در اندازه بزرگ نمایش داده می‌شوند.
                 </AppText>
               </View>
             </Animated.View>
@@ -491,7 +650,7 @@ export default function NewAssignmentScreen() {
               </View>
             )}
             <AppText color={colors.black} style={{ fontFamily: fonts.black, fontSize: 13 }}>
-              {saving ? "ذخیره…" : editing ? "ذخیره تغییرات" : "ثبت تکلیف"}
+              {savingStatus || (saving ? "ذخیره…" : editing ? "ذخیره تغییرات" : "ثبت تکلیف")}
             </AppText>
           </Pressable>
         </View>
@@ -838,6 +997,67 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: "rgba(255,255,255,0.70)",
+  },
+
+  /* image picker */
+  pickBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.white15,
+    backgroundColor: colors.white03,
+    padding: 12,
+  },
+  pickBoxInner: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+  },
+  thumbStrip: {
+    marginTop: 4,
+  },
+  thumbScroll: {
+    flexDirection: "row-reverse",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  thumbWrap: {
+    width: 82,
+    height: 82,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.white15,
+    backgroundColor: colors.white05,
+    position: "relative",
+  },
+  thumbImage: {
+    width: "100%",
+    height: "100%",
+  },
+  thumbRemove: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  thumbAddMore: {
+    width: 82,
+    height: 82,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.white15,
+    backgroundColor: colors.white03,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* denied */

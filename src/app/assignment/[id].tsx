@@ -31,6 +31,7 @@ import {
   fetchMessages,
   markMessageRead,
   markRoomRead,
+  ORIGIN,
   qk,
   readRoomBatch,
   resolveMediaUrl,
@@ -39,6 +40,7 @@ import {
   uploadFile,
 } from "@/api/client";
 import type { Assignment, Attachment, Message, TeamMember } from "@/api/types";
+import { AssignmentImageCarousel } from "@/components/AssignmentImageCarousel";
 import { Button } from "@/components/Button";
 import {
   EmptyState,
@@ -598,12 +600,14 @@ export default function AssignmentDetailScreen() {
       .map((attachment) => ({
         src: resolveMediaUrl(attachment.file_url),
         alt: attachment.file_name || "پیوست تکلیف",
+        downloadUrl: `${ORIGIN}/api/attachments/${attachment.id}/download`,
       })),
     ...comments
       .filter((message) => message.file_url && IMAGE_FILE_RE.test(message.file_url))
       .map((message) => ({
         src: resolveMediaUrl(message.file_url as string),
         alt: message.sender_username ?? "تصویر کامنت",
+        downloadUrl: resolveMediaUrl(message.file_url as string),
       })),
   ];
 
@@ -669,6 +673,12 @@ export default function AssignmentDetailScreen() {
             <>
               <Animated.View entering={FadeInDown.duration(180)}>
                 <GlassCard glow={dueToneValue === "red" && !isDone} contentStyle={styles.hero}>
+                  <AssignmentImageCarousel
+                    attachments={attachmentsQuery.data}
+                    height={210}
+                    onImagePress={(idx) => setViewerIndex(idx)}
+                  />
+
                   <View style={styles.heroTop}>
                     <View
                       style={[

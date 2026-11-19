@@ -21,10 +21,17 @@ import {
   fetchAssignments,
   fetchOverdueAssignments,
   fetchUserStats,
+  ORIGIN,
   qk,
+  resolveMediaUrl,
   toggleAssignment,
 } from "@/api/client";
 import type { Assignment, LeaderboardEntry } from "@/api/types";
+import {
+  AssignmentImageCarousel,
+  isImageAttachment,
+} from "@/components/AssignmentImageCarousel";
+import { ImageViewer, type ViewerImage } from "@/components/ImageViewer";
 import { AreaChart, Donut, SegmentedBar } from "@/components/charts";
 import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
 import { Screen } from "@/components/Screen";
@@ -202,6 +209,7 @@ function AssignmentCard({
   onToggle,
   onEdit,
   onDelete,
+  onOpenImage,
 }: {
   assignment: Assignment;
   view: ViewMode;
@@ -213,6 +221,7 @@ function AssignmentCard({
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onOpenImage?: (assignment: Assignment, index: number) => void;
 }) {
   const done = assignment.is_completed_by_me;
   const countdown = done
@@ -295,6 +304,12 @@ function AssignmentCard({
       >
         <Corners />
         <View style={[styles.gridEdge, { backgroundColor: TONE_DOT[tone] }]} />
+
+        <AssignmentImageCarousel
+          attachments={assignment.attachments}
+          height={136}
+          onImagePress={(idx) => onOpenImage?.(assignment, idx)}
+        />
 
         <View style={styles.gridHead}>
           <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 8, flexShrink: 1 }}>
@@ -381,6 +396,12 @@ function AssignmentCard({
     >
       <Corners />
       <View style={[styles.listEdge, { backgroundColor: TONE_DOT[tone] }]} />
+
+      <AssignmentImageCarousel
+        attachments={assignment.attachments}
+        height={180}
+        onImagePress={(idx) => onOpenImage?.(assignment, idx)}
+      />
 
       <View style={styles.listTop}>
         <IconTile
@@ -990,7 +1011,27 @@ export default function AssignmentsScreen() {
   const [view, setView] = useState<ViewMode>("list");
   const [toast, setToast] = useState<string | null>(null);
   const [sheet, setSheet] = useState<"category" | "subject" | "sort" | null>(null);
+  const [viewerState, setViewerState] = useState<{
+    visible: boolean;
+    images: ViewerImage[];
+    index: number;
+  }>({ visible: false, images: [], index: 0 });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const handleOpenImage = (item: Assignment, index: number) => {
+    const imageAttachments = item.attachments?.filter(isImageAttachment) ?? [];
+    if (imageAttachments.length === 0) return;
+    const viewerImages: ViewerImage[] = imageAttachments.map((att) => ({
+      src: resolveMediaUrl(att.file_url),
+      alt: att.file_name,
+      downloadUrl: `${ORIGIN}/api/attachments/${att.id}/download`,
+    }));
+    setViewerState({
+      visible: true,
+      images: viewerImages,
+      index,
+    });
+  };
 
   useEffect(
     () => () => {
@@ -1458,6 +1499,7 @@ export default function AssignmentsScreen() {
                         bells={bells}
                         canManage={staff}
                         busy={toggle.isPending && toggle.variables === item.id}
+                        onOpenImage={handleOpenImage}
                         onOpen={() =>
                           router.push({
                             pathname: "/assignment/[id]",
@@ -1556,6 +1598,13 @@ export default function AssignmentsScreen() {
         value={sort}
         onSelect={(value) => setSort(value as Sort)}
         onClose={() => setSheet(null)}
+      />
+
+      <ImageViewer
+        visible={viewerState.visible}
+        images={viewerState.images}
+        index={viewerState.index}
+        onClose={() => setViewerState((prev) => ({ ...prev, visible: false }))}
       />
     </Screen>
   );

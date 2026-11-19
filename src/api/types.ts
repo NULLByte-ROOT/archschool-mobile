@@ -79,6 +79,7 @@ export interface Assignment {
   is_completed_by_me: boolean;
   created_at: string;
   updated_at: string;
+  attachments?: Attachment[];
 }
 
 export interface TeamMember {

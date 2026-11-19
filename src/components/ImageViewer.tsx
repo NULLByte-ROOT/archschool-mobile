@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   StyleSheet,
@@ -38,6 +39,7 @@ import { colors, fonts, radius } from "@/theme/tokens";
 export interface ViewerImage {
   src: string;
   alt?: string;
+  downloadUrl?: string;
 }
 
 const MIN_SCALE = 1;
@@ -175,6 +177,14 @@ export function ImageViewer({
     if (!image || downloading) return;
     setDownloading(true);
     try {
+      const targetUrl = image.downloadUrl || image.src;
+      // Triggers system browser / Android Download Manager directly
+      await Linking.openURL(targetUrl);
+      void Haptics.notificationAsync(
+        Haptics.NotificationFeedbackType.Success
+      ).catch(() => undefined);
+    } catch {
+      // Fallback if browser could not open
       const saved = await downloadImage(image.src);
       if (saved) {
         void Haptics.notificationAsync(

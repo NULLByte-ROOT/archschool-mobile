@@ -295,6 +295,11 @@ export function fetchOverdueAssignments(): Promise<Assignment[]> {
   return request<Assignment[]>("/assignments/overdue");
 }
 
+export interface AttachmentCreateInput {
+  file_url: string;
+  file_name?: string;
+}
+
 export interface AssignmentInput {
   title: string;
   description?: string;
@@ -303,6 +308,7 @@ export interface AssignmentInput {
   subtype?: string;
   subject_id?: string;
   due_date?: string | null;
+  attachment_urls?: AttachmentCreateInput[];
 }
 
 export function createAssignment(data: AssignmentInput): Promise<Assignment> {
