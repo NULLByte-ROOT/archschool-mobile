@@ -555,23 +555,23 @@ export default function ProfileScreen() {
           ) : null}
         </Panel>
 
-        {/* owner-only tools */}
-        {owner ? (
+        {/* school management portal (staff/owner only) */}
+        {staff || owner ? (
           <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
-            <MonoLabel style={{ marginBottom: 8 }}>// OWNER</MonoLabel>
+            <MonoLabel style={{ marginBottom: 8 }}>// SCHOOL MANAGEMENT</MonoLabel>
             <Pressable
-              onPress={() => router.push("/admin-bells")}
+              onPress={() => router.push("/school-admin")}
               style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
               accessibilityRole="button"
-              accessibilityLabel="تنظیمات زنگ‌های مدرسه"
+              accessibilityLabel="پنل مدیریت مدرسه و کلاس"
             >
-              <IconTile name="alarm" size={36} iconSize={16} tone={colors.white} />
+              <IconTile name="shield-checkmark" size={36} iconSize={16} tone={colors.amber} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <AppText style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 20 }}>
-                  تنظیمات زنگ‌های مدرسه
+                  مدیریت مدرسه و کلاس
                 </AppText>
                 <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
-                  شروع و پایان چهار زنگ روزانه — روی همهٔ شمارش معکوس‌ها اثر دارد
+                  تنظیمات کاربران، زنگ‌ها، جدول دروس و اعلان‌های تستی
                 </AppText>
               </View>
               <Ionicons name="chevron-back" size={15} color={colors.faint} />
@@ -598,28 +598,9 @@ export default function ProfileScreen() {
           </Pressable>
         </Panel>
 
-        {/* mobile-only management + updates */}
+        {/* mobile-only updates */}
         <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
           <MonoLabel style={{ marginBottom: 8 }}>// APP</MonoLabel>
-          {staff ? (
-            <Pressable
-              onPress={() => router.push("/users")}
-              style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
-              accessibilityRole="button"
-            >
-              <IconTile name="people" size={36} iconSize={16} tone={colors.white} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, lineHeight: 20 }}>
-                  مدیریت کاربران
-                </AppText>
-                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 16 }}>
-                  نقش‌ها، کد دسترسی و فعال‌سازی اعضا
-                </AppText>
-              </View>
-              <Ionicons name="chevron-back" size={15} color={colors.faint} />
-            </Pressable>
-          ) : null}
-
           <Pressable
             onPress={() => void checkForUpdate()}
             style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
@@ -645,15 +626,6 @@ export default function ProfileScreen() {
               <Ionicons name="chevron-back" size={15} color={colors.faint} />
             )}
           </Pressable>
-
-          {owner ? (
-            <View style={styles.ownerHint}>
-              <Ionicons name="shield-checkmark" size={12} color={colors.amber} />
-              <AppText color={colors.amber} style={{ fontSize: 10.5, lineHeight: 16, flex: 1 }}>
-                حساب مالک — دسترسی کامل به آمار سرور و کدهای کاربران.
-              </AppText>
-            </View>
-          ) : null}
         </Panel>
 
         {/* about */}

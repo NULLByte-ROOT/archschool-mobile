@@ -216,6 +216,26 @@ export function updateNotificationPreferences(
   });
 }
 
+export interface PushTestResult {
+  sent: number;
+  results: Array<{
+    token_preview: string;
+    status: string;
+    error?: string | null;
+    message?: string | null;
+  }>;
+}
+
+export function sendTestPushNotification(
+  title?: string,
+  body?: string
+): Promise<PushTestResult> {
+  return request<PushTestResult>("/users/push-token/test", {
+    method: "POST",
+    body: JSON.stringify({ title, body }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Team + stats
 // ---------------------------------------------------------------------------
