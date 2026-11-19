@@ -694,10 +694,13 @@ export interface TelegramTokenResponse {
 export interface BotSettingsResponse {
   bot_token: string;
   group_id: string;
-  gemini_api_key: string;
+  ai_provider: string;
+  ai_api_key: string;
+  ai_base_url: string;
+  ai_model: string;
   bot_enabled: boolean;
   has_token: boolean;
-  has_gemini: boolean;
+  has_ai: boolean;
 }
 
 export async function getTelegramToken(): Promise<TelegramTokenResponse> {
@@ -717,7 +720,10 @@ export async function getBotSettings(): Promise<BotSettingsResponse> {
 export async function updateBotSettings(data: {
   bot_token?: string;
   group_id?: string;
-  gemini_api_key?: string;
+  ai_provider?: string;
+  ai_api_key?: string;
+  ai_base_url?: string;
+  ai_model?: string;
   bot_enabled?: boolean;
 }): Promise<{ ok: boolean; settings: BotSettingsResponse }> {
   return request<{ ok: boolean; settings: BotSettingsResponse }>("/telegram/settings", {
@@ -730,7 +736,7 @@ export async function testBot(message?: string): Promise<{
   ok: boolean;
   bot_username?: string;
   bot_first_name?: string;
-  gemini_status?: string;
+  ai_status?: string;
   group_message_sent?: boolean;
 }> {
   return request("/telegram/test", {

@@ -38,6 +38,14 @@ import {
   spacing,
 } from "@/theme/tokens";
 
+const AI_PROVIDERS = [
+  { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini" },
+  { id: "xai", label: "Grok (xAI)", baseUrl: "https://api.x.ai/v1", defaultModel: "grok-2" },
+  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", defaultModel: "deepseek-chat" },
+  { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini" },
+  { id: "custom", label: "سفارشی", baseUrl: "", defaultModel: "" },
+] as const;
+
 export default function SchoolAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -49,7 +57,10 @@ export default function SchoolAdminScreen() {
   // Telegram & AI bot state
   const [botToken, setBotToken] = useState("");
   const [groupId, setGroupId] = useState("");
-  const [geminiKey, setGeminiKey] = useState("");
+  const [aiProvider, setAiProvider] = useState("openrouter");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiBaseUrl, setAiBaseUrl] = useState("https://openrouter.ai/api/v1");
+  const [aiModel, setAiModel] = useState("openai/gpt-4o-mini");
   const [loadingBot, setLoadingBot] = useState(false);
   const [savingBot, setSavingBot] = useState(false);
   const [testingBot, setTestingBot] = useState(false);
@@ -64,7 +75,10 @@ export default function SchoolAdminScreen() {
         if (active) {
           setBotToken(s.bot_token || "");
           setGroupId(s.group_id || "");
-          setGeminiKey(s.gemini_api_key || "");
+          setAiProvider(s.ai_provider || "openrouter");
+          setAiApiKey(s.ai_api_key || "");
+          setAiBaseUrl(s.ai_base_url || "https://openrouter.ai/api/v1");
+          setAiModel(s.ai_model || "openai/gpt-4o-mini");
         }
       } catch {
         // fallback gracefully
@@ -75,6 +89,12 @@ export default function SchoolAdminScreen() {
     return () => { active = false; };
   }, []);
 
+  const handleSelectProvider = (prov: typeof AI_PROVIDERS[number]) => {
+    setAiProvider(prov.id);
+    if (prov.baseUrl) setAiBaseUrl(prov.baseUrl);
+    if (prov.defaultModel) setAiModel(prov.defaultModel);
+  };
+
   const handleSaveBotSettings = async () => {
     setSavingBot(true);
     setBotFeedback(null);
@@ -82,10 +102,13 @@ export default function SchoolAdminScreen() {
       await updateBotSettings({
         bot_token: botToken.trim(),
         group_id: groupId.trim(),
-        gemini_api_key: geminiKey.trim(),
+        ai_provider: aiProvider,
+        ai_api_key: aiApiKey.trim(),
+        ai_base_url: aiBaseUrl.trim(),
+        ai_model: aiModel.trim(),
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      setBotFeedback({ success: true, message: "تنظیمات ربات و وب‌هوک با موفقیت ذخیره شد." });
+      setBotFeedback({ success: true, message: "تنظیمات ربات تلگرام و مدل هوش مصنوعی با موفقیت ذخیره شد." });
     } catch (err) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
       const msg = err instanceof ApiError ? err.message : "خطا در ذخیره تنظیمات";
@@ -104,11 +127,11 @@ export default function SchoolAdminScreen() {
       const groupNote = res.group_message_sent ? "پیام آزمایشی به گروه ارسال شد! ✅" : "(آیدی گروه خالی بود یا ارسال نشد)";
       setBotFeedback({
         success: true,
-        message: `ربات @${res.bot_username || "ناشناس"} متصل است! جمینای: ${res.gemini_status}. ${groupNote}`,
+        message: `ربات @${res.bot_username || "ناشناس"} متصل است! هوش مصنوعی: ${res.ai_status || "غیرفعال"}. ${groupNote}`,
       });
     } catch (err) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
-      const msg = err instanceof ApiError ? err.message : "خطا در ارتباط با ربات تلگرام یا جمینای";
+      const msg = err instanceof ApiError ? err.message : "خطا در ارتباط با ربات تلگرام یا مدل هوش مصنوعی";
       setBotFeedback({ success: false, message: msg });
     } finally {
       setTestingBot(false);
@@ -375,13 +398,13 @@ export default function SchoolAdminScreen() {
             </View>
           </Panel>
 
-          {/* Section 4: Telegram Bot & AI Assistant */}
+          {/* Section 4: Telegram Bot & Universal AI */}
           <Kicker text="telegram ai bot" dot style={{ marginBottom: 8 }} />
           <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
-            <MonoLabel style={{ marginBottom: 8 }}>// TELEGRAM BOT & GEMINI AI</MonoLabel>
+            <MonoLabel style={{ marginBottom: 8 }}>// TELEGRAM BOT & UNIVERSAL AI</MonoLabel>
 
             <AppText color={colors.textSoft} style={{ fontSize: 12, lineHeight: 19, marginBottom: 12 }}>
-              تنظیمات ربات تلگرام مدرسه برای پاسخ‌گویی به دانش‌آموزان در گروه، یادآوری ددلاین‌ها و اعلام خودکار تغییر صدر جدول لیدربورد:
+              تنظیمات ربات تلگرام مدرسه همراه با هوش مصنوعی چند ارائه‌دهنده (OpenRouter, Grok, DeepSeek, OpenAI) برای پاسخ‌گویی به دانش‌آموزان در گروه، بررسی لیدربورد، ثبت تکلیف و اعلام‌های خودکار:
             </AppText>
 
             <View style={styles.inputGroup}>
@@ -416,20 +439,84 @@ export default function SchoolAdminScreen() {
               />
             </View>
 
+            {/* AI Provider selector */}
+            <View style={[styles.inputGroup, { marginTop: 14 }]}>
+              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                ارائه‌دهنده هوش مصنوعی (AI Provider)
+              </AppText>
+              <View style={styles.providerChips}>
+                {AI_PROVIDERS.map((prov) => {
+                  const active = aiProvider === prov.id;
+                  return (
+                    <Pressable
+                      key={prov.id}
+                      style={[
+                        styles.providerChip,
+                        active && styles.providerChipActive,
+                      ]}
+                      onPress={() => handleSelectProvider(prov)}
+                    >
+                      <AppText
+                        color={active ? colors.accent : colors.faint}
+                        style={{
+                          fontFamily: active ? fonts.bold : fonts.regular,
+                          fontSize: 11.5,
+                        }}
+                      >
+                        {prov.label}
+                      </AppText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={[styles.inputGroup, { marginTop: 10 }]}>
               <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                کلید هوش مصنوعی جمینای (Gemini API Key)
+                کلید دسترسی هوش مصنوعی (API Key)
               </AppText>
               <TextInput
-                value={geminiKey}
-                onChangeText={setGeminiKey}
-                placeholder="AIzaSy..."
+                value={aiApiKey}
+                onChangeText={setAiApiKey}
+                placeholder="sk-or-v1-... یا کلید هوش مصنوعی"
                 placeholderTextColor={colors.faint}
                 style={[styles.textInput, { fontFamily: fonts.medium }]}
                 textAlign="left"
                 autoCapitalize="none"
                 autoCorrect={false}
                 secureTextEntry
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 10 }]}>
+              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                آدرس اندپوینت پایه (Base URL)
+              </AppText>
+              <TextInput
+                value={aiBaseUrl}
+                onChangeText={setAiBaseUrl}
+                placeholder="https://openrouter.ai/api/v1"
+                placeholderTextColor={colors.faint}
+                style={[styles.textInput, { fontFamily: fonts.medium }]}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 10 }]}>
+              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                نام مدل هوش مصنوعی (Model Name)
+              </AppText>
+              <TextInput
+                value={aiModel}
+                onChangeText={setAiModel}
+                placeholder="openai/gpt-4o-mini یا grok-2 یا deepseek-chat"
+                placeholderTextColor={colors.faint}
+                style={[styles.textInput, { fontFamily: fonts.medium }]}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
               />
             </View>
 
@@ -585,5 +672,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingVertical: 4,
+  },
+  providerChips: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+  },
+  providerChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+  },
+  providerChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
   },
 });
