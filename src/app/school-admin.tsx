@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ApiError,
+  AvailableModelItem,
+  fetchAvailableModels,
   getBotSettings,
   sendTestPushNotification,
   testBot,
@@ -39,6 +41,7 @@ import {
 } from "@/theme/tokens";
 
 const AI_PROVIDERS = [
+  { id: "gemini", label: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", defaultModel: "gemini-2.5-flash" },
   { id: "groq", label: "Groq (فوق‌سریع)", baseUrl: "https://api.groq.com/openai/v1", defaultModel: "openai/gpt-oss-120b" },
   { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini" },
   { id: "xai", label: "Grok (xAI)", baseUrl: "https://api.x.ai/v1", defaultModel: "grok-2" },
@@ -62,10 +65,32 @@ export default function SchoolAdminScreen() {
   const [aiApiKey, setAiApiKey] = useState("");
   const [aiBaseUrl, setAiBaseUrl] = useState("https://openrouter.ai/api/v1");
   const [aiModel, setAiModel] = useState("openai/gpt-4o-mini");
+  const [availableModels, setAvailableModels] = useState<AvailableModelItem[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [loadingBot, setLoadingBot] = useState(false);
   const [savingBot, setSavingBot] = useState(false);
   const [testingBot, setTestingBot] = useState(false);
   const [botFeedback, setBotFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  const loadModels = async (keyToUse?: string, baseToUse?: string, provToUse?: string) => {
+    const k = (keyToUse ?? aiApiKey).trim();
+    if (!k) return;
+    setLoadingModels(true);
+    try {
+      const res = await fetchAvailableModels({
+        api_key: k,
+        base_url: (baseToUse ?? aiBaseUrl).trim(),
+        provider: provToUse ?? aiProvider,
+      });
+      if (res.ok && res.models && res.models.length > 0) {
+        setAvailableModels(res.models);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingModels(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -80,6 +105,9 @@ export default function SchoolAdminScreen() {
           setAiApiKey(s.ai_api_key || "");
           setAiBaseUrl(s.ai_base_url || "https://openrouter.ai/api/v1");
           setAiModel(s.ai_model || "openai/gpt-4o-mini");
+          if (s.ai_api_key) {
+            void loadModels(s.ai_api_key, s.ai_base_url || "https://openrouter.ai/api/v1", s.ai_provider || "openrouter");
+          }
         }
       } catch {
         // fallback gracefully
@@ -94,6 +122,10 @@ export default function SchoolAdminScreen() {
     setAiProvider(prov.id);
     if (prov.baseUrl) setAiBaseUrl(prov.baseUrl);
     if (prov.defaultModel) setAiModel(prov.defaultModel);
+    setAvailableModels([]);
+    if (aiApiKey.trim()) {
+      void loadModels(aiApiKey.trim(), prov.baseUrl || aiBaseUrl, prov.id);
+    }
   };
 
   const handleSaveBotSettings = async () => {
@@ -473,13 +505,37 @@ export default function SchoolAdminScreen() {
             </View>
 
             <View style={[styles.inputGroup, { marginTop: 10 }]}>
-              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                کلید دسترسی هوش مصنوعی (API Key)
-              </AppText>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                  کلید دسترسی هوش مصنوعی (API Key)
+                </AppText>
+                {aiApiKey.trim() ? (
+                  <Pressable
+                    onPress={() => void loadModels()}
+                    hitSlop={8}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                  >
+                    <Ionicons name="cloud-download-outline" size={13} color={colors.accent} />
+                    <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
+                      دریافت مدل‌ها
+                    </AppText>
+                  </Pressable>
+                ) : null}
+              </View>
               <TextInput
                 value={aiApiKey}
-                onChangeText={setAiApiKey}
-                placeholder="sk-or-v1-... یا کلید هوش مصنوعی"
+                onChangeText={(val) => {
+                  setAiApiKey(val);
+                  if (val.trim().length > 15 && availableModels.length === 0) {
+                    void loadModels(val);
+                  }
+                }}
+                onBlur={() => {
+                  if (aiApiKey.trim()) {
+                    void loadModels();
+                  }
+                }}
+                placeholder="sk-... یا gsk_... یا AIzaSy..."
                 placeholderTextColor={colors.faint}
                 style={[styles.textInput, { fontFamily: fonts.medium }]}
                 textAlign="left"
@@ -506,13 +562,79 @@ export default function SchoolAdminScreen() {
             </View>
 
             <View style={[styles.inputGroup, { marginTop: 10 }]}>
-              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                نام مدل هوش مصنوعی (Model Name)
-              </AppText>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                  انتخاب مدل هوش مصنوعی (Model Name)
+                </AppText>
+                {loadingModels ? (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <ActivityIndicator size="small" color={colors.accent} />
+                    <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
+                      در حال دریافت لیست مدل‌ها...
+                    </AppText>
+                  </View>
+                ) : availableModels.length > 0 ? (
+                  <Pressable
+                    onPress={() => void loadModels()}
+                    hitSlop={8}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+                  >
+                    <Ionicons name="refresh" size={12} color={colors.accent} />
+                    <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
+                      {availableModels.length} مدل یافت شد (بروزرسانی)
+                    </AppText>
+                  </Pressable>
+                ) : null}
+              </View>
+
+              {availableModels.length > 0 && (
+                <View style={{ marginBottom: 8 }}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+                  >
+                    {availableModels.map((m) => {
+                      const isSelected = aiModel === m.id;
+                      return (
+                        <Pressable
+                          key={m.id}
+                          onPress={() => {
+                            setAiModel(m.id);
+                            void Haptics.selectionAsync().catch(() => undefined);
+                          }}
+                          style={{
+                            paddingHorizontal: 10,
+                            paddingVertical: 6,
+                            borderRadius: radius.md,
+                            backgroundColor: isSelected
+                              ? "rgba(168, 85, 247, 0.2)"
+                              : colors.panelSolid,
+                            borderWidth: 1,
+                            borderColor: isSelected ? colors.accent : colors.lineChip,
+                          }}
+                        >
+                          <AppText
+                            variant="caption"
+                            color={isSelected ? colors.accent : colors.textSoft}
+                            style={{
+                              fontFamily: isSelected ? fonts.bold : fonts.regular,
+                              fontSize: 11.5,
+                            }}
+                          >
+                            {m.name}
+                          </AppText>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
               <TextInput
                 value={aiModel}
                 onChangeText={setAiModel}
-                placeholder="openai/gpt-oss-120b یا openai/gpt-oss-20b یا qwen/qwen3.8-27b"
+                placeholder="انتخاب از چیپ‌های بالا یا تایپ نام مدل دلخواه"
                 placeholderTextColor={colors.faint}
                 style={[styles.textInput, { fontFamily: fonts.medium }]}
                 textAlign="left"

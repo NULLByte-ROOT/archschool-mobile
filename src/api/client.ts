@@ -751,3 +751,22 @@ export async function testBot(message?: string): Promise<{
   });
 }
 
+export interface AvailableModelItem {
+  id: string;
+  name: string;
+}
+
+export async function fetchAvailableModels(data: {
+  api_key?: string;
+  base_url?: string;
+  provider?: string;
+}): Promise<{ ok: boolean; models: AvailableModelItem[]; error?: string }> {
+  return request<{ ok: boolean; models: AvailableModelItem[]; error?: string }>(
+    "/telegram/models",
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    }
+  );
+}
+
