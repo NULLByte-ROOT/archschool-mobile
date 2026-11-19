@@ -128,7 +128,7 @@ export async function restartApp(): Promise<void> {
  * Opens APK download link in external browser/installer.
  */
 export async function openApkDownload(apkUrl?: string): Promise<void> {
-  const target = apkUrl || "/api/v1/updates/apk/app-release.apk";
+  const target = apkUrl || "/api/v1/updates/apk/ArchSchool.apk";
   const fullUrl = target.startsWith("http") ? target : `${ORIGIN}${target}`;
   await Linking.openURL(fullUrl).catch(() => undefined);
 }
