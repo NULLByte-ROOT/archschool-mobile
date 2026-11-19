@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +16,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError, sendTestPushNotification } from "@/api/client";
+import {
+  ApiError,
+  getBotSettings,
+  sendTestPushNotification,
+  testBot,
+  updateBotSettings,
+} from "@/api/client";
 import { Button } from "@/components/Button";
 import { Header } from "@/components/Header";
 import { Screen } from "@/components/Screen";
@@ -39,6 +45,75 @@ export default function SchoolAdminScreen() {
 
   const owner = isOwner(user);
   const staff = isStaff(user);
+
+  // Telegram & AI bot state
+  const [botToken, setBotToken] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [geminiKey, setGeminiKey] = useState("");
+  const [loadingBot, setLoadingBot] = useState(false);
+  const [savingBot, setSavingBot] = useState(false);
+  const [testingBot, setTestingBot] = useState(false);
+  const [botFeedback, setBotFeedback] = useState<{ success: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      setLoadingBot(true);
+      try {
+        const s = await getBotSettings();
+        if (active) {
+          setBotToken(s.bot_token || "");
+          setGroupId(s.group_id || "");
+          setGeminiKey(s.gemini_api_key || "");
+        }
+      } catch {
+        // fallback gracefully
+      } finally {
+        if (active) setLoadingBot(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const handleSaveBotSettings = async () => {
+    setSavingBot(true);
+    setBotFeedback(null);
+    try {
+      await updateBotSettings({
+        bot_token: botToken.trim(),
+        group_id: groupId.trim(),
+        gemini_api_key: geminiKey.trim(),
+      });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      setBotFeedback({ success: true, message: "تنظیمات ربات و وب‌هوک با موفقیت ذخیره شد." });
+    } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+      const msg = err instanceof ApiError ? err.message : "خطا در ذخیره تنظیمات";
+      setBotFeedback({ success: false, message: msg });
+    } finally {
+      setSavingBot(false);
+    }
+  };
+
+  const handleTestBot = async () => {
+    setTestingBot(true);
+    setBotFeedback(null);
+    try {
+      const res = await testBot();
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      const groupNote = res.group_message_sent ? "پیام آزمایشی به گروه ارسال شد! ✅" : "(آیدی گروه خالی بود یا ارسال نشد)";
+      setBotFeedback({
+        success: true,
+        message: `ربات @${res.bot_username || "ناشناس"} متصل است! جمینای: ${res.gemini_status}. ${groupNote}`,
+      });
+    } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+      const msg = err instanceof ApiError ? err.message : "خطا در ارتباط با ربات تلگرام یا جمینای";
+      setBotFeedback({ success: false, message: msg });
+    } finally {
+      setTestingBot(false);
+    }
+  };
 
   // Test notification state
   const [testTitle, setTestTitle] = useState("اعلان آزمایشی مدرسه");
@@ -297,6 +372,115 @@ export default function SchoolAdminScreen() {
                 disabled={isSending}
                 onPress={() => void handleSendTestNotification()}
               />
+            </View>
+          </Panel>
+
+          {/* Section 4: Telegram Bot & AI Assistant */}
+          <Kicker text="telegram ai bot" dot style={{ marginBottom: 8 }} />
+          <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
+            <MonoLabel style={{ marginBottom: 8 }}>// TELEGRAM BOT & GEMINI AI</MonoLabel>
+
+            <AppText color={colors.textSoft} style={{ fontSize: 12, lineHeight: 19, marginBottom: 12 }}>
+              تنظیمات ربات تلگرام مدرسه برای پاسخ‌گویی به دانش‌آموزان در گروه، یادآوری ددلاین‌ها و اعلام خودکار تغییر صدر جدول لیدربورد:
+            </AppText>
+
+            <View style={styles.inputGroup}>
+              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                توکن ربات تلگرام (BotFather Token)
+              </AppText>
+              <TextInput
+                value={botToken}
+                onChangeText={setBotToken}
+                placeholder="123456789:ABCdefGhI..."
+                placeholderTextColor={colors.faint}
+                style={[styles.textInput, { fontFamily: fonts.medium }]}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 10 }]}>
+              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                شناسه عددی گروه تلگرام (Chat ID با علامت منفی)
+              </AppText>
+              <TextInput
+                value={groupId}
+                onChangeText={setGroupId}
+                placeholder="-1001234567890"
+                placeholderTextColor={colors.faint}
+                style={[styles.textInput, { fontFamily: fonts.medium }]}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { marginTop: 10 }]}>
+              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
+                کلید هوش مصنوعی جمینای (Gemini API Key)
+              </AppText>
+              <TextInput
+                value={geminiKey}
+                onChangeText={setGeminiKey}
+                placeholder="AIzaSy..."
+                placeholderTextColor={colors.faint}
+                style={[styles.textInput, { fontFamily: fonts.medium }]}
+                textAlign="left"
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            {botFeedback ? (
+              <View
+                style={[
+                  styles.feedbackBox,
+                  {
+                    backgroundColor: botFeedback.success
+                      ? "rgba(16, 185, 129, 0.12)"
+                      : "rgba(239, 68, 68, 0.12)",
+                    borderColor: botFeedback.success
+                      ? colors.emerald
+                      : colors.danger,
+                    marginTop: 12,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={botFeedback.success ? "checkmark-circle" : "alert-circle"}
+                  size={16}
+                  color={botFeedback.success ? colors.emerald : colors.danger}
+                />
+                <AppText
+                  color={botFeedback.success ? colors.emerald : colors.danger}
+                  style={{ fontSize: 11.5, flex: 1, lineHeight: 18 }}
+                >
+                  {botFeedback.message}
+                </AppText>
+              </View>
+            ) : null}
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  label={savingBot ? "در حال ذخیره..." : "ذخیره تنظیمات"}
+                  icon={savingBot ? undefined : "save-outline"}
+                  variant="primary"
+                  disabled={savingBot || loadingBot}
+                  onPress={() => void handleSaveBotSettings()}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  label={testingBot ? "تست..." : "تست اتصال"}
+                  icon={testingBot ? undefined : "flash-outline"}
+                  variant="ghost"
+                  disabled={testingBot || !botToken}
+                  onPress={() => void handleTestBot()}
+                />
+              </View>
             </View>
           </Panel>
 

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Clipboard from "expo-clipboard";
 import Constants from "expo-constants";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -21,6 +22,8 @@ import {
   ApiError,
   deleteMyAvatar,
   fetchNotificationPreferences,
+  getTelegramToken,
+  revokeTelegramToken,
   qk,
   updateMe,
   updateNotificationPreferences,
@@ -155,6 +158,44 @@ export default function ProfileScreen() {
   const [deleting, setDeleting] = useState(false);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /* ---- telegram link token ---- */
+  const [copiedTgToken, setCopiedTgToken] = useState(false);
+  const tgQuery = useQuery({
+    queryKey: qk.telegramToken,
+    queryFn: getTelegramToken,
+    staleTime: 30_000,
+  });
+
+  const handleCopyTgToken = async (token: string) => {
+    await Clipboard.setStringAsync(token);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopiedTgToken(true);
+    setTimeout(() => setCopiedTgToken(false), 2500);
+  };
+
+  const handleRevokeTgToken = () => {
+    Alert.alert(
+      "تولید کد جدید تلگرام",
+      "آیا مطمئنید؟ در صورت وجود اتصال قبلی، ارتباط تلگرام قطع می‌شود و باید کد جدید را به ربات بفرستید.",
+      [
+        { text: "انصراف", style: "cancel" },
+        {
+          text: "تولید مجدد",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await revokeTelegramToken();
+              void tgQuery.refetch();
+              Alert.alert("کد جدید ایجاد شد", "کد جدید را در چت خصوصی به ربات تلگرام مدرسه بفرستید.");
+            } catch {
+              Alert.alert("خطا", "تولید مجدد کد با خطا مواجه شد.");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   /* ---- notification preferences (server-side, per push token) ---- */
   const prefsQuery = useQuery({
@@ -578,6 +619,90 @@ export default function ProfileScreen() {
             </Pressable>
           </Panel>
         ) : null}
+
+        {/* telegram bot link */}
+        <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <MonoLabel>// TELEGRAM AI BOT</MonoLabel>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <PulseDot tone={tgQuery.data?.is_linked ? colors.emerald : colors.amber} />
+              <AppText
+                color={tgQuery.data?.is_linked ? colors.emerald : colors.amber}
+                style={{ fontSize: 11, fontFamily: fonts.medium }}
+              >
+                {tgQuery.data?.is_linked ? "متصل" : "در انتظار اتصال"}
+              </AppText>
+            </View>
+          </View>
+
+          <AppText color={colors.text} style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+            اتصال به ربات هوشمند کلاس
+          </AppText>
+          <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 12 }}>
+            {tgQuery.data?.is_linked
+              ? `اکانت تلگرام شما ${tgQuery.data.telegram_username ? `(@${tgQuery.data.telegram_username})` : ""} به برنامه متصل است و ربات شما را می‌شناسد.`
+              : "برای دریافت وضعیت تکالیف و استریک شخصی از ربات هوش مصنوعی در گروه، کد زیر را در چت خصوصی به ربات بفرستید."}
+          </AppText>
+
+          {tgQuery.data?.token ? (
+            <View
+              style={{
+                backgroundColor: colors.panelSolid,
+                padding: 10,
+                borderRadius: radius.sm,
+                borderWidth: 1,
+                borderColor: colors.line,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 10,
+              }}
+            >
+              <AppText
+                selectable
+                style={{ fontFamily: fonts.medium, fontSize: 13, color: colors.amber, letterSpacing: 1 }}
+              >
+                {tgQuery.data.token}
+              </AppText>
+              <Pressable
+                onPress={() => void handleCopyTgToken(tgQuery.data?.token || "")}
+                style={{
+                  backgroundColor: colors.amberSoft,
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: radius.xs,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <Ionicons
+                  name={copiedTgToken ? "checkmark" : "copy-outline"}
+                  size={14}
+                  color={colors.amber}
+                />
+                <AppText color={colors.amber} style={{ fontSize: 11, fontFamily: fonts.medium }}>
+                  {copiedTgToken ? "کپی شد" : "کپی"}
+                </AppText>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <Pressable
+            onPress={handleRevokeTgToken}
+            style={({ pressed }) => [
+              {
+                paddingVertical: 6,
+                alignItems: "center",
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <AppText color={colors.faint} style={{ fontSize: 11, textDecorationLine: "underline" }}>
+              {tgQuery.data?.is_linked ? "قطع اتصال و تولید کد جدید" : "تولید مجدد کد اتصال"}
+            </AppText>
+          </Pressable>
+        </Panel>
 
         {/* session */}
         <Panel corners contentStyle={styles.accountPad} style={{ marginBottom: 16 }}>

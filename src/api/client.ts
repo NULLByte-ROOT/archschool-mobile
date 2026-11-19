@@ -680,4 +680,62 @@ export const qk = {
   users: ["users"] as const,
   team: ["team"] as const,
   notificationPrefs: ["notification-prefs"] as const,
+  telegramToken: ["telegram-token"] as const,
+  botSettings: ["bot-settings"] as const,
 };
+
+export interface TelegramTokenResponse {
+  token: string | null;
+  is_linked: boolean;
+  telegram_username: string | null;
+  telegram_id: number | null;
+}
+
+export interface BotSettingsResponse {
+  bot_token: string;
+  group_id: string;
+  gemini_api_key: string;
+  bot_enabled: boolean;
+  has_token: boolean;
+  has_gemini: boolean;
+}
+
+export async function getTelegramToken(): Promise<TelegramTokenResponse> {
+  return request<TelegramTokenResponse>("/telegram/token");
+}
+
+export async function revokeTelegramToken(): Promise<TelegramTokenResponse> {
+  return request<TelegramTokenResponse>("/telegram/token/revoke", {
+    method: "POST",
+  });
+}
+
+export async function getBotSettings(): Promise<BotSettingsResponse> {
+  return request<BotSettingsResponse>("/telegram/settings");
+}
+
+export async function updateBotSettings(data: {
+  bot_token?: string;
+  group_id?: string;
+  gemini_api_key?: string;
+  bot_enabled?: boolean;
+}): Promise<{ ok: boolean; settings: BotSettingsResponse }> {
+  return request<{ ok: boolean; settings: BotSettingsResponse }>("/telegram/settings", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function testBot(message?: string): Promise<{
+  ok: boolean;
+  bot_username?: string;
+  bot_first_name?: string;
+  gemini_status?: string;
+  group_message_sent?: boolean;
+}> {
+  return request("/telegram/test", {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
