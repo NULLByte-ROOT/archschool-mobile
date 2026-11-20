@@ -41,7 +41,7 @@ import {
 } from "@/theme/tokens";
 
 const AI_PROVIDERS = [
-  { id: "gemini", label: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", defaultModel: "gemini-2.5-flash" },
+  { id: "gemini", label: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", defaultModel: "gemini-3.1-flash-lite" },
   { id: "groq", label: "Groq (فوق‌سریع)", baseUrl: "https://api.groq.com/openai/v1", defaultModel: "openai/gpt-oss-120b" },
   { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini" },
   { id: "xai", label: "Grok (xAI)", baseUrl: "https://api.x.ai/v1", defaultModel: "grok-2" },
@@ -49,6 +49,15 @@ const AI_PROVIDERS = [
   { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini" },
   { id: "custom", label: "سفارشی", baseUrl: "", defaultModel: "" },
 ] as const;
+
+const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
+  gemini: ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemma-4-26b-a4b-it", "gemini-3.8-flash"],
+  groq: ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"],
+  openrouter: ["openai/gpt-4o-mini", "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct"],
+  xai: ["grok-2", "grok-2-mini"],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  openai: ["gpt-4o-mini", "gpt-4o"],
+};
 
 export default function SchoolAdminScreen() {
   const router = useRouter();
@@ -581,55 +590,62 @@ export default function SchoolAdminScreen() {
                   >
                     <Ionicons name="refresh" size={12} color={colors.accent} />
                     <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
-                      {availableModels.length} مدل یافت شد (بروزرسانی)
+                      {availableModels.length} مدل زنده (بروزرسانی)
                     </AppText>
                   </Pressable>
                 ) : null}
               </View>
 
-              {availableModels.length > 0 && (
-                <View style={{ marginBottom: 8 }}>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
-                  >
-                    {availableModels.map((m) => {
-                      const isSelected = aiModel === m.id;
-                      return (
-                        <Pressable
-                          key={m.id}
-                          onPress={() => {
-                            setAiModel(m.id);
-                            void Haptics.selectionAsync().catch(() => undefined);
-                          }}
-                          style={{
-                            paddingHorizontal: 10,
-                            paddingVertical: 6,
-                            borderRadius: radius.md,
-                            backgroundColor: isSelected
-                              ? "rgba(168, 85, 247, 0.2)"
-                              : colors.panelSolid,
-                            borderWidth: 1,
-                            borderColor: isSelected ? colors.accent : colors.lineChip,
-                          }}
-                        >
-                          <AppText
-                            variant="caption"
-                            color={isSelected ? colors.accent : colors.textSoft}
+              {(() => {
+                const displayedModels =
+                  availableModels.length > 0
+                    ? availableModels
+                    : (PROVIDER_MODEL_PRESETS[aiProvider] || []).map((id) => ({ id, name: id }));
+                if (displayedModels.length === 0) return null;
+                return (
+                  <View style={{ marginBottom: 8 }}>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
+                    >
+                      {displayedModels.map((m) => {
+                        const isSelected = aiModel === m.id;
+                        return (
+                          <Pressable
+                            key={m.id}
+                            onPress={() => {
+                              setAiModel(m.id);
+                              void Haptics.selectionAsync().catch(() => undefined);
+                            }}
                             style={{
-                              fontFamily: isSelected ? fonts.bold : fonts.regular,
-                              fontSize: 11.5,
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: radius.md,
+                              backgroundColor: isSelected
+                                ? "rgba(168, 85, 247, 0.2)"
+                                : colors.panelSolid,
+                              borderWidth: 1,
+                              borderColor: isSelected ? colors.accent : colors.lineChip,
                             }}
                           >
-                            {m.name}
-                          </AppText>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              )}
+                            <AppText
+                              variant="caption"
+                              color={isSelected ? colors.accent : colors.textSoft}
+                              style={{
+                                fontFamily: isSelected ? fonts.bold : fonts.regular,
+                                fontSize: 11.5,
+                              }}
+                            >
+                              {m.name}
+                            </AppText>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                );
+              })()}
 
               <TextInput
                 value={aiModel}
