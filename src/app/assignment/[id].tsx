@@ -793,78 +793,110 @@ export default function AssignmentDetailScreen() {
                     ) : null}
                   </View>
 
-                  <View style={styles.progressBlock}>
-                    <View style={styles.progressHead}>
-                      <AppText variant="caption" color={colors.muted}>
-                        پیشرفت تیم
-                      </AppText>
-                      <AppText variant="caption" color={colors.text} ltr style={{ fontFamily: fonts.semibold }}>
-                        {fmtNum(completedCount)} / {fmtNum(team.length)} · {fmtPercent(teamPercent)}
-                      </AppText>
+                  {assignment.is_reminder_only ? (
+                    <View
+                      style={{
+                        flexDirection: "row-reverse",
+                        alignItems: "center",
+                        gap: 10,
+                        backgroundColor: "rgba(245, 158, 11, 0.1)",
+                        borderColor: "rgba(245, 158, 11, 0.3)",
+                        borderWidth: 1,
+                        borderRadius: radius.md,
+                        padding: 12,
+                        marginTop: 12,
+                      }}
+                    >
+                      <Ionicons name="notifications-outline" size={20} color="#f59e0b" />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <AppText style={{ fontFamily: fonts.bold, fontSize: 13, color: "#f59e0b" }}>
+                          فقط جهت یادآوری
+                        </AppText>
+                        <AppText color={colors.faint} style={{ fontSize: 11, marginTop: 2, lineHeight: 17 }}>
+                          این مورد صرفاً برای اطلاع‌رسانی است و امکان تیک زدن ندارد.
+                        </AppText>
+                      </View>
                     </View>
-                    <ProgressBar value={teamPercent} height={6} />
-                  </View>
+                  ) : (
+                    <>
+                      <View style={styles.progressBlock}>
+                        <View style={styles.progressHead}>
+                          <AppText variant="caption" color={colors.muted}>
+                            پیشرفت تیم
+                          </AppText>
+                          <AppText variant="caption" color={colors.text} ltr style={{ fontFamily: fonts.semibold }}>
+                            {fmtNum(completedCount)} / {fmtNum(team.length)} · {fmtPercent(teamPercent)}
+                          </AppText>
+                        </View>
+                        <ProgressBar value={teamPercent} height={6} />
+                      </View>
 
-                  <Button
-                    label={isDone ? "برگشت به انجام‌نشده" : "انجام دادم"}
-                    icon={isDone ? "arrow-undo-outline" : "checkmark-circle-outline"}
-                    variant={isDone ? "ghost" : "primary"}
-                    onPress={() => toggle.mutate()}
-                    loading={toggle.isPending}
-                  />
+                      <Button
+                        label={isDone ? "برگشت به انجام‌نشده" : "انجام دادم"}
+                        icon={isDone ? "arrow-undo-outline" : "checkmark-circle-outline"}
+                        variant={isDone ? "ghost" : "primary"}
+                        onPress={() => toggle.mutate()}
+                        loading={toggle.isPending}
+                      />
+                    </>
+                  )}
                 </GlassCard>
               </Animated.View>
 
-              <View style={styles.section}>
-                <SectionTitle
-                  title="انجام داده‌اند"
-                  hint={`${fmtNum(assignment.completed_by_users.length)} نفر`}
-                />
-                <SolidCard style={{ padding: spacing.md, gap: spacing.sm }}>
-                  {assignment.completed_by_users.length === 0 ? (
-                    <AppText variant="caption" color={colors.faint}>
-                      هنوز کسی این تکلیف را انجام نداده.
-                    </AppText>
-                  ) : (
-                    <View style={styles.completerWrap}>
-                      {assignment.completed_by_users.map((completer) => (
-                        <Pressable
-                          key={completer.id}
-                          onPress={() => setProfileId(completer.id)}
-                          style={styles.completer}
-                          accessibilityLabel={`پروفایل ${completer.username ?? ""}`}
-                        >
-                          <Avatar name={completer.username} size="xs" />
-                          <AppText ltr style={styles.completerName} numberOfLines={1}>
-                            {completer.username ?? "کاربر"}
-                          </AppText>
-                          {completer.id === user?.id ? (
-                            <View style={styles.selfTag}>
-                              <AppText style={styles.selfTagText}>تو</AppText>
-                            </View>
-                          ) : null}
-                        </Pressable>
-                      ))}
-                    </View>
-                  )}
-                </SolidCard>
-              </View>
+              {!assignment.is_reminder_only ? (
+                <>
+                  <View style={styles.section}>
+                    <SectionTitle
+                      title="انجام داده‌اند"
+                      hint={`${fmtNum(assignment.completed_by_users.length)} نفر`}
+                    />
+                    <SolidCard style={{ padding: spacing.md, gap: spacing.sm }}>
+                      {assignment.completed_by_users.length === 0 ? (
+                        <AppText variant="caption" color={colors.faint}>
+                          هنوز کسی این تکلیف را انجام نداده.
+                        </AppText>
+                      ) : (
+                        <View style={styles.completerWrap}>
+                          {assignment.completed_by_users.map((completer) => (
+                            <Pressable
+                              key={completer.id}
+                              onPress={() => setProfileId(completer.id)}
+                              style={styles.completer}
+                              accessibilityLabel={`پروفایل ${completer.username ?? ""}`}
+                            >
+                              <Avatar name={completer.username} size="xs" />
+                              <AppText ltr style={styles.completerName} numberOfLines={1}>
+                                {completer.username ?? "کاربر"}
+                              </AppText>
+                              {completer.id === user?.id ? (
+                                <View style={styles.selfTag}>
+                                  <AppText style={styles.selfTagText}>تو</AppText>
+                                </View>
+                              ) : null}
+                            </Pressable>
+                          ))}
+                        </View>
+                      )}
+                    </SolidCard>
+                  </View>
 
-              <View style={styles.section}>
-                <SectionTitle
-                  title="وضعیت تیم"
-                  hint={`${fmtNum(completedCount)} / ${fmtNum(team.length)}`}
-                />
-                <SolidCard style={{ padding: spacing.md }}>
-                  {teamQuery.isLoading ? (
-                    <SkeletonRows count={2} height={44} />
-                  ) : team.length === 0 ? (
-                    <EmptyState compact icon="people-outline" title="عضوی برای نمایش نیست" />
-                  ) : (
-                    <TeamGrid team={team} onProfile={setProfileId} />
-                  )}
-                </SolidCard>
-              </View>
+                  <View style={styles.section}>
+                    <SectionTitle
+                      title="وضعیت تیم"
+                      hint={`${fmtNum(completedCount)} / ${fmtNum(team.length)}`}
+                    />
+                    <SolidCard style={{ padding: spacing.md }}>
+                      {teamQuery.isLoading ? (
+                        <SkeletonRows count={2} height={44} />
+                      ) : team.length === 0 ? (
+                        <EmptyState compact icon="people-outline" title="عضوی برای نمایش نیست" />
+                      ) : (
+                        <TeamGrid team={team} onProfile={setProfileId} />
+                      )}
+                    </SolidCard>
+                  </View>
+                </>
+              ) : null}
 
               <View style={styles.section}>
                 <SectionTitle

@@ -265,6 +265,23 @@ export function updateSchoolSchedule(
   });
 }
 
+export interface SchoolConfigData {
+  subjects: Array<{ id: string; name: string; name_en?: string; teacher: string }>;
+  categories: Array<{ id: string; label: string; items: Array<{ id: string; label: string }> }>;
+  weekly_schedule: Record<string, any>;
+}
+
+export function fetchSchoolConfig(): Promise<SchoolConfigData> {
+  return request<SchoolConfigData>("/schedule/school-config");
+}
+
+export function updateSchoolConfig(payload: Partial<SchoolConfigData>): Promise<SchoolConfigData> {
+  return request<SchoolConfigData>("/schedule/school-config", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchUserStats(userId: number): Promise<LeaderboardEntry> {
   return request<LeaderboardEntry>(`/stats/users/${userId}`);
 }
@@ -308,6 +325,7 @@ export interface AssignmentInput {
   subtype?: string;
   subject_id?: string;
   due_date?: string | null;
+  is_reminder_only?: boolean;
   attachment_urls?: AttachmentCreateInput[];
 }
 
@@ -688,6 +706,7 @@ export const qk = {
   notificationPrefs: ["notification-prefs"] as const,
   telegramToken: ["telegram-token"] as const,
   botSettings: ["bot-settings"] as const,
+  schoolConfig: ["school-config"] as const,
 };
 
 export interface TelegramTokenResponse {

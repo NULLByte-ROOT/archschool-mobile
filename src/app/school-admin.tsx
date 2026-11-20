@@ -20,10 +20,12 @@ import {
   ApiError,
   AvailableModelItem,
   fetchAvailableModels,
+  fetchSchoolConfig,
   getBotSettings,
   sendTestPushNotification,
   testBot,
   updateBotSettings,
+  updateSchoolConfig,
 } from "@/api/client";
 import { Button } from "@/components/Button";
 import { Header } from "@/components/Header";
@@ -31,6 +33,7 @@ import { Screen } from "@/components/Screen";
 import { AppText } from "@/components/ui";
 import { IconTile, Kicker, MonoLabel, Panel } from "@/components/webui";
 import { isOwner, isStaff } from "@/lib/roles";
+import { SUBJECT_LIST } from "@/lib/subjects";
 import { useAuthStore } from "@/store/auth";
 import {
   colors,
@@ -81,6 +84,12 @@ export default function SchoolAdminScreen() {
   const [testingBot, setTestingBot] = useState(false);
   const [botFeedback, setBotFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Modular school subjects & teachers
+  const [subjectsList, setSubjectsList] = useState<Array<{ id: string; name: string; teacher: string }>>([]);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+  const [configFeedback, setConfigFeedback] = useState<string | null>(null);
+
   const loadModels = async (keyToUse?: string, baseToUse?: string, provToUse?: string) => {
     const k = (keyToUse ?? aiApiKey).trim();
     if (!k) return;
@@ -126,6 +135,47 @@ export default function SchoolAdminScreen() {
     })();
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      setLoadingConfig(true);
+      try {
+        const conf = await fetchSchoolConfig();
+        if (active && conf?.subjects) {
+          setSubjectsList(conf.subjects);
+        }
+      } catch {
+        if (active) {
+          setSubjectsList(SUBJECT_LIST.map((s) => ({ id: s.id, name: s.name, teacher: s.teacher })));
+        }
+      } finally {
+        if (active) setLoadingConfig(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  const handleUpdateSubjectTeacher = (id: string, newTeacher: string) => {
+    setSubjectsList((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, teacher: newTeacher } : s))
+    );
+  };
+
+  const handleSaveSchoolConfig = async () => {
+    setSavingConfig(true);
+    setConfigFeedback(null);
+    try {
+      await updateSchoolConfig({ subjects: subjectsList });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      setConfigFeedback("تغییرات دروس و دبیران با موفقیت در کل سامانه و هوش مصنوعی ذخیره شد! ✅");
+    } catch (err) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+      setConfigFeedback("خطا در ذخیره تغییرات دروس.");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
 
   const handleSelectProvider = (prov: typeof AI_PROVIDERS[number]) => {
     setAiProvider(prov.id);
@@ -708,6 +758,105 @@ export default function SchoolAdminScreen() {
                 />
               </View>
             </View>
+          </Panel>
+
+          {/* Section: Modular School Subjects & Teachers */}
+          <Kicker text="school subjects & teachers" dot style={{ marginBottom: 8 }} />
+          <Panel corners contentStyle={styles.cardPad}>
+            <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <IconTile name="book-outline" size={36} iconSize={18} tone={colors.amber} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13.5 }}>
+                  مدیریت دروس و نام دبیران (ماژولار)
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, marginTop: 2 }}>
+                  تغییر نام دبیر یا موضوع فوراً در کل سامانه، تلگرام و هوش مصنوعی اعمال می‌شود
+                </AppText>
+              </View>
+            </View>
+
+            {loadingConfig ? (
+              <View style={{ paddingVertical: 20, alignItems: "center" }}>
+                <ActivityIndicator color={colors.amber} />
+                <AppText color={colors.faint} style={{ fontSize: 11, marginTop: 8 }}>
+                  در حال بارگذاری دروس...
+                </AppText>
+              </View>
+            ) : (
+              <View style={{ gap: 10, marginTop: 4 }}>
+                {subjectsList.map((s) => (
+                  <View
+                    key={s.id}
+                    style={{
+                      flexDirection: "row-reverse",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      backgroundColor: colors.panelSoft,
+                      padding: 10,
+                      borderRadius: radius.md,
+                      gap: 8,
+                    }}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <AppText style={{ fontFamily: fonts.bold, fontSize: 13, color: colors.white }}>
+                        {s.name}
+                      </AppText>
+                      <AppText color={colors.faint} style={{ fontSize: 10.5 }}>
+                        کد یکتا: {s.id}
+                      </AppText>
+                    </View>
+                    <View style={{ width: 140, flexDirection: "row-reverse", alignItems: "center", gap: 6 }}>
+                      <AppText color={colors.faint} style={{ fontSize: 11 }}>
+                        دبیر:
+                      </AppText>
+                      <TextInput
+                        value={s.teacher}
+                        onChangeText={(txt) => handleUpdateSubjectTeacher(s.id, txt)}
+                        style={{
+                          flex: 1,
+                          backgroundColor: colors.panelSolid,
+                          borderWidth: 1,
+                          borderColor: colors.line,
+                          borderRadius: radius.sm,
+                          color: colors.white,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          fontSize: 12,
+                          fontFamily: fonts.medium,
+                          textAlign: "right",
+                        }}
+                        placeholder="نام دبیر"
+                        placeholderTextColor={colors.faint}
+                      />
+                    </View>
+                  </View>
+                ))}
+
+                {configFeedback ? (
+                  <View
+                    style={[
+                      styles.feedbackBox,
+                      { borderColor: colors.emerald, marginTop: 8 },
+                    ]}
+                  >
+                    <Ionicons name="checkmark-circle" size={16} color={colors.emerald} />
+                    <AppText color={colors.emerald} style={{ fontSize: 11.5, flex: 1, lineHeight: 18 }}>
+                      {configFeedback}
+                    </AppText>
+                  </View>
+                ) : null}
+
+                <View style={{ marginTop: 8 }}>
+                  <Button
+                    label={savingConfig ? "در حال ذخیره..." : "ذخیره تغییرات دروس و دبیران"}
+                    icon={savingConfig ? undefined : "save-outline"}
+                    variant="primary"
+                    disabled={savingConfig || loadingConfig}
+                    onPress={() => void handleSaveSchoolConfig()}
+                  />
+                </View>
+              </View>
+            )}
           </Panel>
 
           {/* Section 4: System Diagnostics */}

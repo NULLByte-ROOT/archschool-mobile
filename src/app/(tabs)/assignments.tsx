@@ -168,6 +168,27 @@ function ToggleButton({
   busy: boolean;
   onPress: () => void;
 }) {
+  if (assignment.is_reminder_only) {
+    return (
+      <View
+        style={[
+          styles.toggle,
+          {
+            backgroundColor: "rgba(245, 158, 11, 0.12)",
+            borderColor: "rgba(245, 158, 11, 0.3)",
+          },
+        ]}
+      >
+        <Ionicons name="notifications-outline" size={12} color="#f59e0b" />
+        <AppText
+          color="#f59e0b"
+          style={{ fontFamily: fonts.semibold, fontSize: 11, lineHeight: 16 }}
+        >
+          فقط یادآوری
+        </AppText>
+      </View>
+    );
+  }
   const done = assignment.is_completed_by_me;
   const label = done ? "برگرداندن" : assignment.category === "exam" ? "خوندم" : "انجام دادم";
   return (

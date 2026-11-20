@@ -12,6 +12,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   TextInput,
   View,
 } from "react-native";
@@ -151,6 +152,7 @@ export default function NewAssignmentScreen() {
   const [due, setDue] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
+  const [isReminderOnly, setIsReminderOnly] = useState(false);
 
   const [subjectOpen, setSubjectOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -181,6 +183,7 @@ export default function NewAssignmentScreen() {
     setDue(data.due_date ?? null);
     setTitle(data.title ?? "");
     setTitleTouched(true);
+    setIsReminderOnly(Boolean(data.is_reminder_only));
     if (data.due_date) {
       const parsed = parseDue(data.due_date);
       if (parsed) setViewWeek(Math.max(0, Math.min(3, weekOffsetOf(parsed))));
@@ -293,6 +296,7 @@ export default function NewAssignmentScreen() {
           category,
           subtype,
           due_date: due,
+          is_reminder_only: isReminderOnly,
           ...(attachment_urls.length > 0 ? { attachment_urls } : {}),
         };
         const saved = editing
@@ -512,6 +516,58 @@ export default function NewAssignmentScreen() {
                       خالی بگذاری، همین عنوان ثبت می‌شود.
                     </AppText>
                   ) : null}
+                </View>
+
+                {/* فقط جهت یادآوری */}
+                <View style={{ marginTop: 16 }}>
+                  <Pressable
+                    onPress={() => {
+                      void Haptics.selectionAsync().catch(() => undefined);
+                      setIsReminderOnly(!isReminderOnly);
+                    }}
+                    style={[
+                      styles.reminderToggleCard,
+                      isReminderOnly && styles.reminderToggleCardActive,
+                    ]}
+                    accessibilityRole="switch"
+                    accessibilityState={{ checked: isReminderOnly }}
+                    accessibilityLabel="فقط جهت یادآوری"
+                  >
+                    <Switch
+                      value={isReminderOnly}
+                      onValueChange={(val) => {
+                        void Haptics.selectionAsync().catch(() => undefined);
+                        setIsReminderOnly(val);
+                      }}
+                      trackColor={{ false: "#334155", true: "rgba(245, 158, 11, 0.4)" }}
+                      thumbColor={isReminderOnly ? "#f59e0b" : "#94a3b8"}
+                    />
+                    <View style={{ flex: 1, minWidth: 0, alignItems: "flex-end", gap: 3 }}>
+                      <View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 6 }}>
+                        <Ionicons
+                          name="notifications-outline"
+                          size={16}
+                          color={isReminderOnly ? "#f59e0b" : colors.textSoft}
+                        />
+                        <AppText
+                          style={{
+                            fontFamily: fonts.bold,
+                            fontSize: 13.5,
+                            lineHeight: 20,
+                            color: isReminderOnly ? "#f59e0b" : colors.white,
+                          }}
+                        >
+                          فقط جهت یادآوری
+                        </AppText>
+                      </View>
+                      <AppText
+                        color={colors.faint}
+                        style={{ fontSize: 11, lineHeight: 18, textAlign: "right" }}
+                      >
+                        این مورد صرفاً برای اطلاع‌رسانی است و امکان تیک زدن ندارد.
+                      </AppText>
+                    </View>
+                  </Pressable>
                 </View>
 
                 {/* تصاویر پیوست */}
@@ -1068,5 +1124,22 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 28,
     paddingBottom: 60,
+  },
+
+  reminderToggleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: radius.md,
+    backgroundColor: colors.panelSoft,
+    borderWidth: 1,
+    borderColor: colors.line,
+    gap: 12,
+  },
+  reminderToggleCardActive: {
+    borderColor: "rgba(245, 158, 11, 0.4)",
+    backgroundColor: "rgba(245, 158, 11, 0.08)",
   },
 });
