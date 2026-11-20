@@ -18,13 +18,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
   ApiError,
-  AvailableModelItem,
-  fetchAvailableModels,
   fetchSchoolConfig,
-  getBotSettings,
   sendTestPushNotification,
-  testBot,
-  updateBotSettings,
   updateSchoolConfig,
 } from "@/api/client";
 import { Button } from "@/components/Button";
@@ -43,25 +38,6 @@ import {
   spacing,
 } from "@/theme/tokens";
 
-const AI_PROVIDERS = [
-  { id: "gemini", label: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/", defaultModel: "gemini-3.1-flash-lite" },
-  { id: "groq", label: "Groq (فوق‌سریع)", baseUrl: "https://api.groq.com/openai/v1", defaultModel: "openai/gpt-oss-120b" },
-  { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", defaultModel: "openai/gpt-4o-mini" },
-  { id: "xai", label: "Grok (xAI)", baseUrl: "https://api.x.ai/v1", defaultModel: "grok-2" },
-  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", defaultModel: "deepseek-chat" },
-  { id: "openai", label: "OpenAI", baseUrl: "https://api.openai.com/v1", defaultModel: "gpt-4o-mini" },
-  { id: "custom", label: "سفارشی", baseUrl: "", defaultModel: "" },
-] as const;
-
-const PROVIDER_MODEL_PRESETS: Record<string, string[]> = {
-  gemini: ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemma-4-26b-a4b-it", "gemini-3.8-flash"],
-  groq: ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"],
-  openrouter: ["openai/gpt-4o-mini", "google/gemini-2.5-flash", "meta-llama/llama-3.3-70b-instruct"],
-  xai: ["grok-2", "grok-2-mini"],
-  deepseek: ["deepseek-chat", "deepseek-reasoner"],
-  openai: ["gpt-4o-mini", "gpt-4o"],
-};
-
 export default function SchoolAdminScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -70,71 +46,11 @@ export default function SchoolAdminScreen() {
   const owner = isOwner(user);
   const staff = isStaff(user);
 
-  // Telegram & AI bot state
-  const [botToken, setBotToken] = useState("");
-  const [groupId, setGroupId] = useState("");
-  const [aiProvider, setAiProvider] = useState("openrouter");
-  const [aiApiKey, setAiApiKey] = useState("");
-  const [aiBaseUrl, setAiBaseUrl] = useState("https://openrouter.ai/api/v1");
-  const [aiModel, setAiModel] = useState("openai/gpt-4o-mini");
-  const [availableModels, setAvailableModels] = useState<AvailableModelItem[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
-  const [loadingBot, setLoadingBot] = useState(false);
-  const [savingBot, setSavingBot] = useState(false);
-  const [testingBot, setTestingBot] = useState(false);
-  const [botFeedback, setBotFeedback] = useState<{ success: boolean; message: string } | null>(null);
-
   // Modular school subjects & teachers
   const [subjectsList, setSubjectsList] = useState<Array<{ id: string; name: string; teacher: string }>>([]);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [savingConfig, setSavingConfig] = useState(false);
   const [configFeedback, setConfigFeedback] = useState<string | null>(null);
-
-  const loadModels = async (keyToUse?: string, baseToUse?: string, provToUse?: string) => {
-    const k = (keyToUse ?? aiApiKey).trim();
-    if (!k) return;
-    setLoadingModels(true);
-    try {
-      const res = await fetchAvailableModels({
-        api_key: k,
-        base_url: (baseToUse ?? aiBaseUrl).trim(),
-        provider: provToUse ?? aiProvider,
-      });
-      if (res.ok && res.models && res.models.length > 0) {
-        setAvailableModels(res.models);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingModels(false);
-    }
-  };
-
-  useEffect(() => {
-    let active = true;
-    void (async () => {
-      setLoadingBot(true);
-      try {
-        const s = await getBotSettings();
-        if (active) {
-          setBotToken(s.bot_token || "");
-          setGroupId(s.group_id || "");
-          setAiProvider(s.ai_provider || "openrouter");
-          setAiApiKey(s.ai_api_key || "");
-          setAiBaseUrl(s.ai_base_url || "https://openrouter.ai/api/v1");
-          setAiModel(s.ai_model || "openai/gpt-4o-mini");
-          if (s.ai_api_key) {
-            void loadModels(s.ai_api_key, s.ai_base_url || "https://openrouter.ai/api/v1", s.ai_provider || "openrouter");
-          }
-        }
-      } catch {
-        // fallback gracefully
-      } finally {
-        if (active) setLoadingBot(false);
-      }
-    })();
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -174,59 +90,6 @@ export default function SchoolAdminScreen() {
       setConfigFeedback("خطا در ذخیره تغییرات دروس.");
     } finally {
       setSavingConfig(false);
-    }
-  };
-
-  const handleSelectProvider = (prov: typeof AI_PROVIDERS[number]) => {
-    setAiProvider(prov.id);
-    if (prov.baseUrl) setAiBaseUrl(prov.baseUrl);
-    if (prov.defaultModel) setAiModel(prov.defaultModel);
-    setAvailableModels([]);
-    if (aiApiKey.trim()) {
-      void loadModels(aiApiKey.trim(), prov.baseUrl || aiBaseUrl, prov.id);
-    }
-  };
-
-  const handleSaveBotSettings = async () => {
-    setSavingBot(true);
-    setBotFeedback(null);
-    try {
-      await updateBotSettings({
-        bot_token: botToken.trim(),
-        group_id: groupId.trim(),
-        ai_provider: aiProvider,
-        ai_api_key: aiApiKey.trim(),
-        ai_base_url: aiBaseUrl.trim(),
-        ai_model: aiModel.trim(),
-      });
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      setBotFeedback({ success: true, message: "تنظیمات ربات تلگرام و مدل هوش مصنوعی با موفقیت ذخیره شد." });
-    } catch (err) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
-      const msg = err instanceof ApiError ? err.message : "خطا در ذخیره تنظیمات";
-      setBotFeedback({ success: false, message: msg });
-    } finally {
-      setSavingBot(false);
-    }
-  };
-
-  const handleTestBot = async () => {
-    setTestingBot(true);
-    setBotFeedback(null);
-    try {
-      const res = await testBot();
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      const groupNote = res.group_message_sent ? "پیام آزمایشی به گروه ارسال شد! ✅" : "(آیدی گروه خالی بود یا ارسال نشد)";
-      setBotFeedback({
-        success: true,
-        message: `ربات @${res.bot_username || "ناشناس"} متصل است! هوش مصنوعی: ${res.ai_status || "غیرفعال"}. ${groupNote}`,
-      });
-    } catch (err) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
-      const msg = err instanceof ApiError ? err.message : "خطا در ارتباط با ربات تلگرام یا مدل هوش مصنوعی";
-      setBotFeedback({ success: false, message: msg });
-    } finally {
-      setTestingBot(false);
     }
   };
 
@@ -512,274 +375,28 @@ export default function SchoolAdminScreen() {
             </View>
           </Panel>
 
-          {/* Section 4: Telegram Bot & Universal AI */}
-          <Kicker text="telegram ai bot" dot style={{ marginBottom: 8 }} />
+          {/* Section 4: AI & Telegram Bot */}
+          <Kicker text="ai & telegram bot" dot style={{ marginBottom: 8 }} />
           <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
-            <MonoLabel style={{ marginBottom: 8 }}>// TELEGRAM BOT & UNIVERSAL AI</MonoLabel>
+            <MonoLabel style={{ marginBottom: 8 }}>// ARTIFICIAL INTELLIGENCE & BOT</MonoLabel>
 
-            <AppText color={colors.textSoft} style={{ fontSize: 12, lineHeight: 19, marginBottom: 12 }}>
-              تنظیمات ربات تلگرام مدرسه همراه با هوش مصنوعی چند ارائه‌دهنده (OpenRouter, Grok, DeepSeek, OpenAI) برای پاسخ‌گویی به دانش‌آموزان در گروه، بررسی لیدربورد، ثبت تکلیف و اعلام‌های خودکار:
-            </AppText>
-
-            <View style={styles.inputGroup}>
-              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                توکن ربات تلگرام (BotFather Token)
-              </AppText>
-              <TextInput
-                value={botToken}
-                onChangeText={setBotToken}
-                placeholder="123456789:ABCdefGhI..."
-                placeholderTextColor={colors.faint}
-                style={[styles.textInput, { fontFamily: fonts.medium }]}
-                textAlign="left"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={[styles.inputGroup, { marginTop: 10 }]}>
-              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                شناسه عددی گروه تلگرام (Chat ID با علامت منفی)
-              </AppText>
-              <TextInput
-                value={groupId}
-                onChangeText={setGroupId}
-                placeholder="-1001234567890"
-                placeholderTextColor={colors.faint}
-                style={[styles.textInput, { fontFamily: fonts.medium }]}
-                textAlign="left"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            {/* AI Provider selector */}
-            <View style={[styles.inputGroup, { marginTop: 14 }]}>
-              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                ارائه‌دهنده هوش مصنوعی (AI Provider)
-              </AppText>
-              <View style={styles.providerChips}>
-                {AI_PROVIDERS.map((prov) => {
-                  const active = aiProvider === prov.id;
-                  return (
-                    <Pressable
-                      key={prov.id}
-                      style={[
-                        styles.providerChip,
-                        active && styles.providerChipActive,
-                      ]}
-                      onPress={() => handleSelectProvider(prov)}
-                    >
-                      <AppText
-                        color={active ? colors.accent : colors.faint}
-                        style={{
-                          fontFamily: active ? fonts.bold : fonts.regular,
-                          fontSize: 11.5,
-                        }}
-                      >
-                        {prov.label}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={[styles.inputGroup, { marginTop: 10 }]}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                  کلید دسترسی هوش مصنوعی (API Key)
+            <Pressable
+              onPress={() => router.push("/admin-bot")}
+              style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
+              accessibilityRole="button"
+              accessibilityLabel="هوش مصنوعی و ربات تلگرام"
+            >
+              <IconTile name="sparkles" size={40} iconSize={18} tone={colors.amber} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13.5, lineHeight: 21 }}>
+                  هوش مصنوعی و ربات تلگرام
                 </AppText>
-                {aiApiKey.trim() ? (
-                  <Pressable
-                    onPress={() => void loadModels()}
-                    hitSlop={8}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
-                  >
-                    <Ionicons name="cloud-download-outline" size={13} color={colors.accent} />
-                    <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
-                      دریافت مدل‌ها
-                    </AppText>
-                  </Pressable>
-                ) : null}
-              </View>
-              <TextInput
-                value={aiApiKey}
-                onChangeText={(val) => {
-                  setAiApiKey(val);
-                  if (val.trim().length > 15 && availableModels.length === 0) {
-                    void loadModels(val);
-                  }
-                }}
-                onBlur={() => {
-                  if (aiApiKey.trim()) {
-                    void loadModels();
-                  }
-                }}
-                placeholder="sk-... یا gsk_... یا AIzaSy..."
-                placeholderTextColor={colors.faint}
-                style={[styles.textInput, { fontFamily: fonts.medium }]}
-                textAlign="left"
-                autoCapitalize="none"
-                autoCorrect={false}
-                secureTextEntry
-              />
-            </View>
-
-            <View style={[styles.inputGroup, { marginTop: 10 }]}>
-              <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                آدرس اندپوینت پایه (Base URL)
-              </AppText>
-              <TextInput
-                value={aiBaseUrl}
-                onChangeText={setAiBaseUrl}
-                placeholder="https://openrouter.ai/api/v1"
-                placeholderTextColor={colors.faint}
-                style={[styles.textInput, { fontFamily: fonts.medium }]}
-                textAlign="left"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            <View style={[styles.inputGroup, { marginTop: 10 }]}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                  انتخاب مدل هوش مصنوعی (Model Name)
-                </AppText>
-                {loadingModels ? (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <ActivityIndicator size="small" color={colors.accent} />
-                    <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
-                      در حال دریافت لیست مدل‌ها...
-                    </AppText>
-                  </View>
-                ) : availableModels.length > 0 ? (
-                  <Pressable
-                    onPress={() => void loadModels()}
-                    hitSlop={8}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
-                  >
-                    <Ionicons name="refresh" size={12} color={colors.accent} />
-                    <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>
-                      {availableModels.length} مدل زنده (بروزرسانی)
-                    </AppText>
-                  </Pressable>
-                ) : null}
-              </View>
-
-              {(() => {
-                const displayedModels =
-                  availableModels.length > 0
-                    ? availableModels
-                    : (PROVIDER_MODEL_PRESETS[aiProvider] || []).map((id) => ({ id, name: id }));
-                if (displayedModels.length === 0) return null;
-                return (
-                  <View style={{ marginBottom: 8 }}>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{ gap: 6, paddingVertical: 2 }}
-                    >
-                      {displayedModels.map((m) => {
-                        const isSelected = aiModel === m.id;
-                        return (
-                          <Pressable
-                            key={m.id}
-                            onPress={() => {
-                              setAiModel(m.id);
-                              void Haptics.selectionAsync().catch(() => undefined);
-                            }}
-                            style={{
-                              paddingHorizontal: 10,
-                              paddingVertical: 6,
-                              borderRadius: radius.md,
-                              backgroundColor: isSelected
-                                ? "rgba(168, 85, 247, 0.2)"
-                                : colors.panelSolid,
-                              borderWidth: 1,
-                              borderColor: isSelected ? colors.accent : colors.lineChip,
-                            }}
-                          >
-                            <AppText
-                              variant="caption"
-                              color={isSelected ? colors.accent : colors.textSoft}
-                              style={{
-                                fontFamily: isSelected ? fonts.bold : fonts.regular,
-                                fontSize: 11.5,
-                              }}
-                            >
-                              {m.name}
-                            </AppText>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
-                );
-              })()}
-
-              <TextInput
-                value={aiModel}
-                onChangeText={setAiModel}
-                placeholder="انتخاب از چیپ‌های بالا یا تایپ نام مدل دلخواه"
-                placeholderTextColor={colors.faint}
-                style={[styles.textInput, { fontFamily: fonts.medium }]}
-                textAlign="left"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
-            {botFeedback ? (
-              <View
-                style={[
-                  styles.feedbackBox,
-                  {
-                    backgroundColor: botFeedback.success
-                      ? "rgba(16, 185, 129, 0.12)"
-                      : "rgba(239, 68, 68, 0.12)",
-                    borderColor: botFeedback.success
-                      ? colors.emerald
-                      : colors.danger,
-                    marginTop: 12,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={botFeedback.success ? "checkmark-circle" : "alert-circle"}
-                  size={16}
-                  color={botFeedback.success ? colors.emerald : colors.danger}
-                />
-                <AppText
-                  color={botFeedback.success ? colors.emerald : colors.danger}
-                  style={{ fontSize: 11.5, flex: 1, lineHeight: 18 }}
-                >
-                  {botFeedback.message}
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 17, marginTop: 2 }}>
+                  مدیریت سیستم پرامپت و لحن، تنظیمات API ارائه‌دهنده‌ها و ربات تلگرام
                 </AppText>
               </View>
-            ) : null}
-
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-              <View style={{ flex: 1 }}>
-                <Button
-                  label={savingBot ? "در حال ذخیره..." : "ذخیره تنظیمات"}
-                  icon={savingBot ? undefined : "save-outline"}
-                  variant="primary"
-                  disabled={savingBot || loadingBot}
-                  onPress={() => void handleSaveBotSettings()}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button
-                  label={testingBot ? "تست..." : "تست اتصال"}
-                  icon={testingBot ? undefined : "flash-outline"}
-                  variant="ghost"
-                  disabled={testingBot || !botToken}
-                  onPress={() => void handleTestBot()}
-                />
-              </View>
-            </View>
+              <Ionicons name="chevron-back" size={16} color={colors.faint} />
+            </Pressable>
           </Panel>
 
           {/* Section: Modular School Subjects & Teachers */}

@@ -723,6 +723,11 @@ export interface BotSettingsResponse {
   ai_api_key: string;
   ai_base_url: string;
   ai_model: string;
+  ai_system_prompt?: string;
+  ai_persona_anchor?: string;
+  ai_followup_anchor?: string;
+  ai_temperature?: number;
+  ai_max_tokens?: number;
   bot_enabled: boolean;
   has_token: boolean;
   has_ai: boolean;
@@ -750,10 +755,21 @@ export async function updateBotSettings(data: {
   ai_base_url?: string;
   ai_model?: string;
   bot_enabled?: boolean;
+  ai_system_prompt?: string;
+  ai_persona_anchor?: string;
+  ai_followup_anchor?: string;
+  ai_temperature?: number;
+  ai_max_tokens?: number;
 }): Promise<{ ok: boolean; settings: BotSettingsResponse }> {
   return request<{ ok: boolean; settings: BotSettingsResponse }>("/telegram/settings", {
     method: "PUT",
     body: JSON.stringify(data),
+  });
+}
+
+export async function resetBotPrompts(): Promise<{ ok: boolean; settings: BotSettingsResponse }> {
+  return request<{ ok: boolean; settings: BotSettingsResponse }>("/telegram/reset-prompt", {
+    method: "POST",
   });
 }
 
