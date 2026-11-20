@@ -789,3 +789,6 @@ export async function fetchAvailableModels(data: {
   );
 }
 
+export type SchoolConfigResponse = SchoolConfigData;
+export type SchoolSubjectConfig = SchoolConfigData["subjects"][number];
+

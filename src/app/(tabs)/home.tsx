@@ -2,9 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -1112,6 +1112,13 @@ export default function DashboardScreen() {
   });
   const team = useQuery({ queryKey: qk.team, queryFn: fetchTeam, enabled: !member });
 
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: qk.overview });
+      void queryClient.invalidateQueries({ queryKey: qk.assignments });
+    }, [queryClient])
+  );
+
   // Resolved overdue assignments stored in SecureStore so the user is asked only once
   const [resolvedOverdueIds, setResolvedOverdueIds] = useState<Set<number>>(new Set());
   const [resolvedLoaded, setResolvedLoaded] = useState(false);
@@ -1143,11 +1150,19 @@ export default function DashboardScreen() {
   // All overdue uncompleted assignments that haven't been resolved yet
   const unpromptedOverdue = useMemo(() => {
     if (!resolvedLoaded || !assignments.data) return [];
+    const userCreatedTime = user?.created_at ? new Date(user.created_at).getTime() : 0;
+
     return assignments.data
       .filter((item) => {
         if (item.is_completed_by_me) return false;
         if (resolvedOverdueIds.has(item.id)) return false;
         const due = parseDue(item.due_date);
+        // Isolate new users: tasks due or created before user registered should NEVER prompt them as overdue
+        if (userCreatedTime) {
+          const itemCreated = item.created_at ? new Date(item.created_at).getTime() : 0;
+          const itemDue = due ? due.getTime() : 0;
+          if (itemCreated < userCreatedTime && itemDue < userCreatedTime) return false;
+        }
         return Boolean(due && due.getTime() < now);
       })
       .sort((a, b) => {
@@ -1155,7 +1170,7 @@ export default function DashboardScreen() {
         const db = parseDue(b.due_date)?.getTime() ?? 0;
         return db - da; // Show most recent overdue first
       });
-  }, [assignments.data, resolvedLoaded, resolvedOverdueIds, now]);
+  }, [assignments.data, resolvedLoaded, resolvedOverdueIds, now, user?.created_at]);
 
   // If 4 or more overdue items, auto-reject ALL of them as uncompleted into "overdue"
   useEffect(() => {

@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { useState, type ComponentProps } from "react";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState, type ComponentProps } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -13,15 +14,13 @@ import {
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { fetchLeaderboard, fetchUserStats, qk } from "@/api/client";
+import { fetchLeaderboard, qk } from "@/api/client";
 import type { LeaderboardEntry, Role } from "@/api/types";
-import { EmptyState, SkeletonRows, SolidCard, StatTile } from "@/components/cards";
+import { EmptyState } from "@/components/cards";
 import { Screen } from "@/components/Screen";
-import { Sheet } from "@/components/Sheet";
-import { AppText, Avatar, Pill } from "@/components/ui";
+import { AppText, Avatar } from "@/components/ui";
 import { UserProfileModal } from "@/components/UserProfileModal";
-import { Corners, Kicker, MonoLabel, Panel } from "@/components/webui";
-import { WeekBars } from "@/components/WeekBars";
+import { Corners, Kicker, MonoLabel, Panel, PulseDot } from "@/components/webui";
 import { faDate, fmtNum, fmtPercent, latinDigits } from "@/lib/format";
 import { useAuthStore } from "@/store/auth";
 import {
@@ -104,143 +103,85 @@ const ROLE_BADGE: Record<Role, { label: string; border: string; bg: string; text
 /* profile sheet (native extra, unchanged behaviour)                   */
 /* ------------------------------------------------------------------ */
 
-function speedLabel(hours: number | null): string {
-  if (hours === null || !Number.isFinite(hours)) return "—";
-  if (hours < 1) return `${latinDigits(Math.max(1, Math.round(hours * 60)).toString())} دقیقه`;
-  return `${latinDigits(hours.toFixed(1))} ساعت`;
+function useBiWeeklyCountdown() {
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const now = new Date();
+      // Iran time is UTC + 3:30 (210 minutes)
+      const iranTime = new Date(now.getTime() + (3.5 * 60 + now.getTimezoneOffset()) * 60000);
+
+      // Reference epoch: Wednesday Nov 4 2026 22:00 Iran time
+      const epoch = new Date(2026, 10, 4, 22, 0, 0);
+      const diffMs = iranTime.getTime() - epoch.getTime();
+      const seasonMs = 14 * 24 * 3600 * 1000;
+
+      const currentSeason = Math.floor(Math.max(0, diffMs) / seasonMs) + 1;
+      const nextResetMs = epoch.getTime() + currentSeason * seasonMs;
+
+      const remMs = Math.max(0, nextResetMs - iranTime.getTime());
+      const totalSec = Math.floor(remMs / 1000);
+
+      const days = Math.floor(totalSec / 86400);
+      const hours = Math.floor((totalSec % 86400) / 3600);
+      const minutes = Math.floor((totalSec % 3600) / 60);
+      const seconds = totalSec % 60;
+
+      setTimeLeft({ days, hours, minutes, seconds });
+    };
+
+    calculateTime();
+    const interval = setInterval(calculateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return timeLeft;
 }
 
-function ProfileStatsSheet({
-  entry,
-  loading,
-  visible,
-  onClose,
-}: {
-  entry: LeaderboardEntry | undefined;
-  loading: boolean;
-  visible: boolean;
-  onClose: () => void;
-}) {
+function SeasonCountdownCard() {
+  const countdown = useBiWeeklyCountdown();
+
   return (
-    <Sheet
-      visible={visible}
-      onClose={onClose}
-      title={entry?.user.username ?? "آمار عضو"}
-      subtitle={entry ? `رتبهٔ ${fmtNum(entry.rank)} از تیم` : undefined}
-    >
-      {loading && !entry ? (
-        <SkeletonRows count={3} height={70} />
-      ) : !entry ? (
-        <EmptyState compact icon="person-outline" title="آماری پیدا نشد" />
-      ) : (
-        <>
-          <View style={styles.sheetHead}>
-            <Avatar name={entry.user.username} uri={entry.user.avatar_url} size="lg" ring />
-            <View style={{ flex: 1, gap: 4 }}>
-              <AppText variant="subtitle">{entry.user.username}</AppText>
-              <View style={styles.sheetPills}>
-                <Pill label={`رتبه ${fmtNum(entry.rank)}`} tone="amber" icon="podium-outline" />
-                <Pill
-                  label={entry.completed_today ? "امروز ثبت شد" : "امروز ثبت نشده"}
-                  tone={entry.completed_today ? "teal" : "red"}
-                />
-              </View>
-            </View>
-          </View>
+    <Panel corners contentStyle={styles.countdownCard} style={{ marginBottom: 14 }}>
+      <View style={styles.countdownHead}>
+        <View style={styles.countdownTitleRow}>
+          <PulseDot size={6} tone={colors.flame} />
+          <AppText style={{ fontFamily: fonts.bold, fontSize: 13, color: colors.white }}>
+            سیزن دوره‌ای لیدربورد کلاس
+          </AppText>
+        </View>
+        <MonoLabel tone={colors.flameText}>// BI-WEEKLY RESET</MonoLabel>
+      </View>
 
-          <View style={styles.sheetStatRow}>
-            <StatTile
-              label="درصد تحویل"
-              value={fmtPercent(entry.completion_percentage)}
-              icon="analytics-outline"
-            />
-            <StatTile
-              label="زنجیرهٔ فعلی"
-              value={`${fmtNum(entry.current_streak)} روز`}
-              icon="flame-outline"
-              tone={colors.flame}
-            />
-          </View>
-          <View style={styles.sheetStatRow}>
-            <StatTile
-              label="بهترین زنجیره"
-              value={`${fmtNum(entry.best_streak)} روز`}
-              icon="trophy-outline"
-              tone={colors.amber}
-            />
-            <StatTile
-              label="تحویل‌ها"
-              value={`${fmtNum(entry.completed_count)} / ${fmtNum(entry.total_assignments)}`}
-              icon="checkmark-done-outline"
-              tone={colors.success}
-            />
-          </View>
+      <AppText color={colors.textSoft} style={{ fontSize: 11, lineHeight: 17, marginVertical: 6 }}>
+        رنکینگ هر دو هفته چهارشنبه ساعت ۲۲:۰۰ ریست می‌شود و امتیازات دوره جدید از صفر آغاز می‌گردد:
+      </AppText>
 
-          <SolidCard style={{ padding: spacing.md, gap: spacing.md }}>
-            <View style={styles.sheetLine}>
-              <View style={styles.sheetLineRight}>
-                <Ionicons name="speedometer-outline" size={15} color={colors.amber} />
-                <AppText variant="caption" color={colors.muted}>
-                  میانگین سرعت تحویل
-                </AppText>
-              </View>
-              <AppText variant="label" style={{ fontFamily: fonts.semibold }}>
-                {speedLabel(entry.average_speed_hours)}
-              </AppText>
-            </View>
-            <View style={styles.sheetLine}>
-              <View style={styles.sheetLineRight}>
-                <Ionicons name="trending-up-outline" size={15} color={colors.success} />
-                <AppText variant="caption" color={colors.muted}>
-                  قوی‌ترین درس
-                </AppText>
-              </View>
-              <AppText variant="label" numberOfLines={1} style={{ maxWidth: 160 }}>
-                {entry.strongest_subject ?? "—"}
-              </AppText>
-            </View>
-            <View style={styles.sheetLine}>
-              <View style={styles.sheetLineRight}>
-                <Ionicons name="trending-down-outline" size={15} color={colors.danger} />
-                <AppText variant="caption" color={colors.muted}>
-                  ضعیف‌ترین درس
-                </AppText>
-              </View>
-              <AppText variant="label" numberOfLines={1} style={{ maxWidth: 160 }}>
-                {entry.weakest_subject ?? "—"}
-              </AppText>
-            </View>
-            <View style={styles.sheetLine}>
-              <View style={styles.sheetLineRight}>
-                <Ionicons name="time-outline" size={15} color={colors.blue} />
-                <AppText variant="caption" color={colors.muted}>
-                  آخرین تحویل
-                </AppText>
-              </View>
-              <AppText variant="label" numberOfLines={1} style={{ maxWidth: 180 }}>
-                {entry.last_completion_time
-                  ? faDate(entry.last_completion_time, "weekdayTime")
-                  : "—"}
-              </AppText>
-            </View>
-          </SolidCard>
-
-          <SolidCard style={{ padding: spacing.md, gap: spacing.sm }}>
-            <View style={styles.sheetLine}>
-              <AppText variant="label" color={colors.muted}>
-                هفتهٔ اخیر
-              </AppText>
-              <AppText variant="caption" color={colors.faint} ltr>
-                {fmtNum(entry.weekly_activity.reduce((sum, day) => sum + day.count, 0))} تحویل
-              </AppText>
-            </View>
-            <View style={{ alignSelf: "center" }}>
-              <WeekBars data={entry.weekly_activity} maxBarHeight={44} />
-            </View>
-          </SolidCard>
-        </>
-      )}
-    </Sheet>
+      <View style={styles.timerRow}>
+        <View style={styles.timeUnit}>
+          <AppText style={styles.timeVal}>{fmtNum(countdown.days)}</AppText>
+          <AppText style={styles.timeLabel}>روز</AppText>
+        </View>
+        <AppText style={styles.timeColon}>:</AppText>
+        <View style={styles.timeUnit}>
+          <AppText style={styles.timeVal}>{String(countdown.hours).padStart(2, "0")}</AppText>
+          <AppText style={styles.timeLabel}>ساعت</AppText>
+        </View>
+        <AppText style={styles.timeColon}>:</AppText>
+        <View style={styles.timeUnit}>
+          <AppText style={styles.timeVal}>{String(countdown.minutes).padStart(2, "0")}</AppText>
+          <AppText style={styles.timeLabel}>دقیقه</AppText>
+        </View>
+        <AppText style={styles.timeColon}>:</AppText>
+        <View style={styles.timeUnit}>
+          <AppText style={[styles.timeVal, { color: colors.flame }]}>
+            {String(countdown.seconds).padStart(2, "0")}
+          </AppText>
+          <AppText style={styles.timeLabel}>ثانیه</AppText>
+        </View>
+      </View>
+    </Panel>
   );
 }
 
@@ -468,25 +409,23 @@ function LeaderboardRow({
 export default function LeaderboardScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((state) => state.user);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
   const [profileId, setProfileId] = useState<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
+    }, [queryClient])
+  );
 
   const query = useQuery({
     queryKey: qk.leaderboard,
     queryFn: fetchLeaderboard,
   });
 
-  const stats = useQuery({
-    queryKey: qk.userStats(selectedId ?? 0),
-    queryFn: () => fetchUserStats(selectedId ?? 0),
-    enabled: selectedId !== null,
-    staleTime: 30000,
-  });
-
   const entries = query.data ?? [];
   const mine = entries.find((entry) => entry.user.id === user?.id);
   const teamRecord = entries.reduce((best, entry) => Math.max(best, entry.best_streak), 0);
-  const selectedEntry = stats.data ?? entries.find((entry) => entry.user.id === selectedId);
 
   return (
     <Screen edges={["top"]} underStatusBar>
@@ -538,6 +477,11 @@ export default function LeaderboardScreen() {
               </AppText>
             </Pressable>
           </View>
+        </Animated.View>
+
+        {/* Season Countdown */}
+        <Animated.View entering={FadeInDown.duration(180).delay(10)}>
+          <SeasonCountdownCard />
         </Animated.View>
 
         {/* summary */}
@@ -629,7 +573,7 @@ export default function LeaderboardScreen() {
                   row={entry}
                   index={index}
                   isMe={entry.user.id === user?.id}
-                  onOpen={() => setSelectedId(entry.user.id)}
+                  onOpen={() => setProfileId(entry.user.id)}
                   onProfile={() => setProfileId(entry.user.id)}
                 />
               </Animated.View>
@@ -637,13 +581,6 @@ export default function LeaderboardScreen() {
           </View>
         )}
       </ScrollView>
-
-      <ProfileStatsSheet
-        visible={selectedId !== null}
-        onClose={() => setSelectedId(null)}
-        entry={selectedEntry}
-        loading={stats.isLoading}
-      />
 
       <UserProfileModal userId={profileId} onClose={() => setProfileId(null)} />
     </Screen>
@@ -662,6 +599,57 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     flexWrap: "wrap",
+  },
+  countdownCard: {
+    padding: 14,
+    backgroundColor: "rgba(245, 158, 11, 0.04)",
+  },
+  countdownHead: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  countdownTitleRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+  },
+  timerRow: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 6,
+    paddingVertical: 8,
+    backgroundColor: "rgba(0, 0, 0, 0.25)",
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+  timeUnit: {
+    alignItems: "center",
+    minWidth: 44,
+  },
+  timeVal: {
+    fontFamily: fonts.black,
+    fontSize: 16,
+    lineHeight: 22,
+    color: colors.white,
+    fontVariant: ["tabular-nums"],
+  },
+  timeLabel: {
+    fontFamily: fonts.medium,
+    fontSize: 9.5,
+    lineHeight: 14,
+    color: colors.faint,
+    marginTop: 1,
+  },
+  timeColon: {
+    fontFamily: fonts.black,
+    fontSize: 14,
+    color: colors.faint,
+    marginBottom: 14,
   },
   refreshButton: {
     minHeight: 40,

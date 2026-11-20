@@ -410,6 +410,28 @@ export default function SchoolAdminScreen() {
               </View>
               <Ionicons name="chevron-back" size={16} color={colors.faint} />
             </Pressable>
+
+            <Pressable
+              onPress={() => router.push("/admin-subjects")}
+              style={({ pressed }) => [
+                styles.linkRow,
+                { borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.06)", paddingTop: 12, marginTop: 4 },
+                pressed && { opacity: 0.85 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="مدیریت دروس، اساتید و موضوعات"
+            >
+              <IconTile name="library-outline" size={40} iconSize={18} tone={colors.amber} />
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13.5, lineHeight: 21 }}>
+                  مدیریت دروس، اساتید و موضوعات
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 17, marginTop: 2 }}>
+                  تعریف ماژولار دروس، نام دبیران و موضوعات تکالیف
+                </AppText>
+              </View>
+              <Ionicons name="chevron-back" size={16} color={colors.faint} />
+            </Pressable>
           </Panel>
 
           {/* Section 3: Test Notifications */}

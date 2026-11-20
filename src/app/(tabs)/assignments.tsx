@@ -1,14 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   Alert,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Vibration,
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -32,6 +33,7 @@ import {
   isImageAttachment,
 } from "@/components/AssignmentImageCarousel";
 import { ImageViewer, type ViewerImage } from "@/components/ImageViewer";
+import { CelebrationBurst } from "@/components/CelebrationBurst";
 import { AreaChart, Donut, SegmentedBar } from "@/components/charts";
 import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
 import { Screen } from "@/components/Screen";
@@ -1088,6 +1090,15 @@ export default function AssignmentsScreen() {
   });
   const overdueCount = overdueQuery.data?.length ?? 0;
 
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: qk.assignments });
+      void queryClient.invalidateQueries({ queryKey: qk.overdue });
+    }, [queryClient])
+  );
+
   const toggle = useMutation({
     mutationFn: (id: number) => toggleAssignment(id),
     onMutate: async (id: number) => {
@@ -1125,7 +1136,15 @@ export default function AssignmentsScreen() {
       queryClient.setQueryData<Assignment[]>(qk.assignments, (old) =>
         (old ?? []).map((item) => (item.id === updated.id ? updated : item))
       );
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      if (updated.is_completed_by_me) {
+        try {
+          Vibration.vibrate(1000);
+        } catch {}
+        setShowCelebration(true);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+      } else {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+      }
       void queryClient.invalidateQueries({ queryKey: qk.overview });
       void queryClient.invalidateQueries({ queryKey: qk.leaderboard });
       void queryClient.invalidateQueries({ queryKey: qk.userStats(user?.id ?? 0) });
@@ -1626,6 +1645,11 @@ export default function AssignmentsScreen() {
         images={viewerState.images}
         index={viewerState.index}
         onClose={() => setViewerState((prev) => ({ ...prev, visible: false }))}
+      />
+
+      <CelebrationBurst
+        active={showCelebration}
+        onFinish={() => setShowCelebration(false)}
       />
     </Screen>
   );

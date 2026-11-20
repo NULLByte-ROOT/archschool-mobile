@@ -21,6 +21,7 @@ import {
   type TimetableEntry,
 } from "@/lib/timetable";
 import { colors, fonts, radius, spacing } from "@/theme/tokens";
+import { useAuthStore } from "@/store/auth";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -56,6 +57,7 @@ function dueTone(due: string | null | undefined): "red" | "amber" | "none" {
   const date = parseDue(due);
   if (!date) return "none";
   const diff = date.getTime() - Date.now();
+  if (diff < 0) return "none"; // Past/overdue tasks should not paint tomorrow's schedule red
   if (diff <= 86_400_000) return "red";
   if (diff <= 86_400_000 * 2) return "amber";
   return "none";
@@ -101,10 +103,20 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
     staleTime: 60_000,
   });
 
-  const bySubject = useMemo(
-    () => groupBySubject(assignments.data ?? []),
-    [assignments.data]
-  );
+  const user = useAuthStore((state) => state.user);
+
+  const bySubject = useMemo(() => {
+    let raw = assignments.data ?? [];
+    if (user?.created_at) {
+      const userJoinTime = new Date(user.created_at).getTime();
+      raw = raw.filter((item) => {
+        const itemCreated = item.created_at ? new Date(item.created_at).getTime() : 0;
+        const itemDue = item.due_date ? new Date(item.due_date).getTime() : 0;
+        return itemCreated >= userJoinTime || itemDue >= userJoinTime;
+      });
+    }
+    return groupBySubject(raw);
+  }, [assignments.data, user?.created_at]);
 
   // The weekly timetable gives the live bell its subject name
   const day = dayForDate(new Date(now));
@@ -120,23 +132,32 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
   }, [now]);
 
   const nextDayRows = useMemo(() => {
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+
     return flattenDay(nextDay)
       .filter((entry) => entry.subject)
       .map((entry) => {
         const list = (bySubject[entry.subject!.id] ?? []).filter(
           (item) => !item.is_completed_by_me
         );
-        const exams = list.filter((item) => item.category === "exam");
+        // Only include upcoming active events (never expired past tasks)
+        const upcomingList = list.filter((item) => {
+          if (!item.due_date) return true;
+          const due = parseDue(item.due_date);
+          return Boolean(due && due.getTime() >= startOfToday.getTime());
+        });
+        const exams = upcomingList.filter((item) => item.category === "exam");
         return {
           id: entry.subject!.id,
           subject: entry.subject!,
           label: entry.label,
-          events: list,
+          events: upcomingList,
           exam: exams.length > 0,
-          tone: list.length ? dueTone(list[0].due_date) : ("none" as const),
+          tone: upcomingList.length ? dueTone(upcomingList[0].due_date) : ("none" as const),
         };
       });
-  }, [bySubject, nextDay]);
+  }, [bySubject, nextDay, now]);
 
   const totalEvents = nextDayRows.reduce((sum, row) => sum + row.events.length, 0);
 
