@@ -157,7 +157,7 @@ export default function AdminBotScreen() {
   const handleResetPrompt = () => {
     Alert.alert(
       "بازنشانی پرامپت",
-      "آیا مطمئن هستید که می‌خواهید متن پرامپت و لنگرها به متن پیش‌فرض لاتی «داش هوشنگ» بازگردند؟",
+      "آیا از بازنشانی پرامپت‌ها و لنگرها به تنظیمات اولیه اطمینان دارید؟",
       [
         { text: "انصراف", style: "cancel" },
         {
@@ -170,10 +170,10 @@ export default function AdminBotScreen() {
               setSystemPrompt(res.settings.ai_system_prompt || "");
               setPersonaAnchor(res.settings.ai_persona_anchor || "");
               setFollowupAnchor(res.settings.ai_followup_anchor || "");
-              setTemperature(String(res.settings.ai_temperature ?? 0.85));
-              setMaxTokens(String(res.settings.ai_max_tokens ?? 600));
+              setTemperature(String(res.settings.ai_temperature ?? 0.7));
+              setMaxTokens(String(res.settings.ai_max_tokens ?? 1000));
               void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-              setFeedback({ success: true, message: "پرامپت با موفقیت به پیش‌فرض لاتی داش هوشنگ بازنشانی شد." });
+              setFeedback({ success: true, message: "پرامپت با موفقیت به حالت اولیه بازنشانی شد." });
             } catch (err: any) {
               setFeedback({ success: false, message: err.message || "خطا در بازنشانی پرامپت" });
             } finally {
@@ -383,7 +383,7 @@ export default function AdminBotScreen() {
                 </View>
 
                 <AppText color={colors.faint} style={{ fontSize: 11.5, lineHeight: 18, marginBottom: 8 }}>
-                  این متن مشخص‌کننده هویت داش هوشنگ، ادبیات لاتی، قوانین کل‌کل و مثال‌های مکالمه عینی است:
+                  دستورالعمل سیستمی، قوانین پاسخگویی و نقش هوش مصنوعی را در این بخش مشخص کنید (در صورت خالی بودن، مدل با رفتار استاندارد خود پاسخ می‌دهد):
                 </AppText>
 
                 <TextInput
@@ -392,7 +392,7 @@ export default function AdminBotScreen() {
                   multiline
                   numberOfLines={14}
                   style={[styles.textInput, styles.promptArea]}
-                  placeholder="دستور سیستمی هوش مصنوعی..."
+                  placeholder="دستورالعمل سیستمی هوش مصنوعی..."
                   placeholderTextColor={colors.faint}
                   textAlignVertical="top"
                 />
@@ -408,9 +408,9 @@ export default function AdminBotScreen() {
 
               <Kicker text="persona anchors" dot style={{ marginBottom: 8 }} />
               <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
-                <MonoLabel style={{ marginBottom: 8 }}>// PRE-USER PERSONA ANCHOR</MonoLabel>
+                <MonoLabel style={{ marginBottom: 8 }}>// PERSONA ANCHOR</MonoLabel>
                 <AppText color={colors.faint} style={{ fontSize: 11.5, lineHeight: 18, marginBottom: 8 }}>
-                  دستور یادآوری لحن لاتی که دقیقاً پیش از آخرین پیام کاربر تزریق می‌شود:
+                  دستور سیستمی که پیش از پیام کاربر جهت حفظ پیوستگی لحن و پاسخگویی تزریق می‌شود (اختیاری):
                 </AppText>
                 <TextInput
                   value={personaAnchor}
@@ -418,14 +418,14 @@ export default function AdminBotScreen() {
                   multiline
                   numberOfLines={4}
                   style={[styles.textInput, { minHeight: 70 }]}
-                  placeholder="لنگر تثبیت لحن..."
+                  placeholder="دستور لنگر لحن و رفتار..."
                   placeholderTextColor={colors.faint}
                   textAlignVertical="top"
                 />
 
-                <MonoLabel style={{ marginTop: 14, marginBottom: 8 }}>// POST-TOOL FOLLOW-UP ANCHOR</MonoLabel>
+                <MonoLabel style={{ marginTop: 14, marginBottom: 8 }}>// FOLLOW-UP ANCHOR</MonoLabel>
                 <AppText color={colors.faint} style={{ fontSize: 11.5, lineHeight: 18, marginBottom: 8 }}>
-                  دستوری که مانع اداری‌شدن گزارش خروجی ابزارها (لیدربورد/برنامه) می‌شود:
+                  دستورالعملی که پس از فراخوانی ابزارها جهت قالب‌بندی و ارائه مناسب اطلاعات اعمال می‌شود (اختیاری):
                 </AppText>
                 <TextInput
                   value={followupAnchor}
@@ -433,7 +433,7 @@ export default function AdminBotScreen() {
                   multiline
                   numberOfLines={4}
                   style={[styles.textInput, { minHeight: 70 }]}
-                  placeholder="یادآوری لحن بعد از ابزار..."
+                  placeholder="دستور نحوه ارائه خروجی ابزارها..."
                   placeholderTextColor={colors.faint}
                   textAlignVertical="top"
                 />
@@ -586,19 +586,19 @@ export default function AdminBotScreen() {
 
                 <View style={styles.inputGroup}>
                   <AppText variant="caption" color={colors.muted} style={styles.inputLabel}>
-                    دمای خلاقیت و طنز (Temperature: 0.0 تا 1.5)
+                    دمای پاسخگویی (Temperature: 0.0 تا 1.5)
                   </AppText>
                   <TextInput
                     value={temperature}
                     onChangeText={setTemperature}
                     keyboardType="numeric"
-                    placeholder="0.85"
+                    placeholder="0.7"
                     placeholderTextColor={colors.faint}
                     style={[styles.textInput, { fontFamily: fonts.medium }]}
                     textAlign="left"
                   />
                   <AppText color={colors.faint} style={{ fontSize: 10, marginTop: 3 }}>
-                    عدد 0.85 بهترین تعادل بین هوش بالا و تیکه‌اندازی لاتی را می‌دهد.
+                    مقدار پیش‌فرض 0.7 تعادل مناسبی بین دقت و تنوع پاسخ‌ها ایجاد می‌کند.
                   </AppText>
                 </View>
 
