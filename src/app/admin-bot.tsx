@@ -367,17 +367,17 @@ export default function AdminBotScreen() {
           {!loading && activeTab === "prompt" && (
             <View>
               <Kicker text="system instruction" dot style={{ marginBottom: 8 }} />
-              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <MonoLabel>// SYSTEM PROMPT & PERSONA</MonoLabel>
-                  <View style={{ flexDirection: "row", gap: 8 }}>
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16, overflow: "hidden" }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                  <MonoLabel>// SYSTEM INSTRUCTION</MonoLabel>
+                  <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
                     <Pressable onPress={handleCopyPrompt} style={styles.actionBtn}>
-                      <Ionicons name="copy-outline" size={13} color={colors.accent} />
+                      <Ionicons name="copy-outline" size={12} color={colors.accent} />
                       <AppText variant="caption" color={colors.accent} style={{ fontSize: 11 }}>کپی</AppText>
                     </Pressable>
-                    <Pressable onPress={handleResetPrompt} disabled={resetting} style={styles.actionBtn}>
-                      <Ionicons name="refresh-outline" size={13} color={colors.danger} />
-                      <AppText variant="caption" color={colors.danger} style={{ fontSize: 11 }}>بازنشانی پیش‌فرض</AppText>
+                    <Pressable onPress={handleResetPrompt} disabled={resetting} style={[styles.actionBtn, { borderColor: "rgba(248,113,113,0.3)" }]}>
+                      <Ionicons name="refresh-outline" size={12} color={colors.danger} />
+                      <AppText variant="caption" color={colors.danger} style={{ fontSize: 11 }}>بازنشانی</AppText>
                     </Pressable>
                   </View>
                 </View>
