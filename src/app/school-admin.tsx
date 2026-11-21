@@ -375,29 +375,33 @@ export default function SchoolAdminScreen() {
             </View>
           </Panel>
 
-          {/* Section 4: AI & Telegram Bot */}
-          <Kicker text="ai & telegram bot" dot style={{ marginBottom: 8 }} />
-          <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
-            <MonoLabel style={{ marginBottom: 8 }}>// ARTIFICIAL INTELLIGENCE & BOT</MonoLabel>
+          {/* Section 4: AI & Telegram Bot (Owner only) */}
+          {owner ? (
+            <>
+              <Kicker text="ai & telegram bot" dot style={{ marginBottom: 8 }} />
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 16 }}>
+                <MonoLabel style={{ marginBottom: 8 }}>// ARTIFICIAL INTELLIGENCE & BOT (OWNER ONLY)</MonoLabel>
 
-            <Pressable
-              onPress={() => router.push("/admin-bot")}
-              style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
-              accessibilityRole="button"
-              accessibilityLabel="هوش مصنوعی و ربات تلگرام"
-            >
-              <IconTile name="sparkles" size={40} iconSize={18} tone={colors.amber} />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <AppText style={{ fontFamily: fonts.bold, fontSize: 13.5, lineHeight: 21 }}>
-                  هوش مصنوعی و ربات تلگرام
-                </AppText>
-                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 17, marginTop: 2 }}>
-                  مدیریت سیستم پرامپت و لحن، تنظیمات API ارائه‌دهنده‌ها و ربات تلگرام
-                </AppText>
-              </View>
-              <Ionicons name="chevron-back" size={16} color={colors.faint} />
-            </Pressable>
-          </Panel>
+                <Pressable
+                  onPress={() => router.push("/admin-bot")}
+                  style={({ pressed }) => [styles.linkRow, pressed && { opacity: 0.85 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="هوش مصنوعی و ربات تلگرام"
+                >
+                  <IconTile name="sparkles" size={40} iconSize={18} tone={colors.amber} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <AppText style={{ fontFamily: fonts.bold, fontSize: 13.5, lineHeight: 21 }}>
+                      هوش مصنوعی و ربات تلگرام
+                    </AppText>
+                    <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 17, marginTop: 2 }}>
+                      مدیریت سیستم پرامپت و لحن، تنظیمات API ارائه‌دهنده‌ها و ربات تلگرام
+                    </AppText>
+                  </View>
+                  <Ionicons name="chevron-back" size={16} color={colors.faint} />
+                </Pressable>
+              </Panel>
+            </>
+          ) : null}
 
           {/* Section: Modular School Subjects & Teachers */}
           <Kicker text="school subjects & teachers" dot style={{ marginBottom: 8 }} />

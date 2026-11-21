@@ -234,14 +234,14 @@ export default function AdminBotScreen() {
     }
   };
 
-  if (!staff && !owner) {
+  if (!owner) {
     return (
       <Screen>
         <Header title="هوش مصنوعی" onBack={() => router.back()} />
         <View style={styles.centerContainer}>
           <Ionicons name="lock-closed" size={48} color={colors.danger} />
           <AppText variant="title" style={{ marginTop: 16 }}>دسترسی محدود</AppText>
-          <AppText color={colors.faint} style={{ marginTop: 8 }}>این بخش مخصوص مدیران کلاس است.</AppText>
+          <AppText color={colors.faint} style={{ marginTop: 8 }}>این بخش اختصاصی مالک سیستم (Owner) است و ادمین‌ها دسترسی ندارند.</AppText>
         </View>
       </Screen>
     );
