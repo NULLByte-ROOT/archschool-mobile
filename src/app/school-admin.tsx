@@ -84,7 +84,7 @@ export default function SchoolAdminScreen() {
     try {
       await updateSchoolConfig({ subjects: subjectsList });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      setConfigFeedback("تغییرات دروس و دبیران با موفقیت در کل سامانه و هوش مصنوعی ذخیره شد! ✅");
+      setConfigFeedback("تغییرات دروس و دبیران با موفقیت در کل اپلیکیشن و هوش مصنوعی ذخیره شد! ✅");
     } catch (err) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
       setConfigFeedback("خطا در ذخیره تغییرات دروس.");
@@ -413,7 +413,7 @@ export default function SchoolAdminScreen() {
                   مدیریت دروس و نام دبیران (ماژولار)
                 </AppText>
                 <AppText color={colors.faint} style={{ fontSize: 11, marginTop: 2 }}>
-                  تغییر نام دبیر یا موضوع فوراً در کل سامانه، تلگرام و هوش مصنوعی اعمال می‌شود
+                  تغییر نام دبیر یا موضوع فوراً در کل اپلیکیشن، تلگرام و هوش مصنوعی اعمال می‌شود
                 </AppText>
               </View>
             </View>

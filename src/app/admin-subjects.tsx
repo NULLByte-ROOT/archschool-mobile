@@ -76,7 +76,7 @@ export default function AdminSubjectsScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.setQueryData(qk.schoolConfig, data);
       void queryClient.invalidateQueries({ queryKey: qk.schedule });
-      Alert.alert("موفقیت", "تنظیمات دروس و اساتید با موفقیت در کل سامانه ذخیره و اعمال شد!");
+      Alert.alert("موفقیت", "تنظیمات دروس و اساتید با موفقیت در کل اپلیکیشن ذخیره و اعمال شد!");
     },
     onError: (err: any) => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -475,7 +475,7 @@ export default function AdminSubjectsScreen() {
           {/* Save All Button Fixed at Bottom */}
           <View style={styles.saveWrap}>
             <Button
-              label={saveMutation.isPending ? "در حال ذخیره‌سازی..." : "ذخیره نهایی در سامانه و هوش مصنوعی"}
+              label={saveMutation.isPending ? "در حال ذخیره‌سازی..." : "ذخیره نهایی در اپلیکیشن و هوش مصنوعی"}
               icon="save-outline"
               variant="primary"
               disabled={saveMutation.isPending}
