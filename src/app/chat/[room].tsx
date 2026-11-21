@@ -540,6 +540,7 @@ export default function ChatRoomScreen() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const listRef = useRef<ComponentRef<typeof FlashList<Message>>>(null);
   const window = useWindowDimensions();
   const pendingSends = useRef(new Set<number>());
   /** Latest messages, readable from the AppState listener without re-binding. */
@@ -694,6 +695,10 @@ export default function ChatRoomScreen() {
         void markMessageRead(message.id)
           .then(() => markRoomRead(room))
           .catch(() => undefined);
+      } else {
+        requestAnimationFrame(() => {
+          listRef.current?.scrollToOffset({ offset: 0, animated: true });
+        });
       }
     },
     onEvent: onSocketEvent,
@@ -784,12 +789,16 @@ export default function ChatRoomScreen() {
     const image = pendingImage;
     setMessages((current) => mergeMessages(current, [optimistic]));
     setInput("");
+    inputRef.current?.clear();
     setReplyTo(null);
     setPendingImage(null);
     setSending(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
       () => undefined
     );
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
 
     try {
       let fileUrl: string | null = null;
@@ -817,6 +826,9 @@ export default function ChatRoomScreen() {
           [created]
         )
       );
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset: 0, animated: true });
+      });
       void queryClient.invalidateQueries({ queryKey: qk.chatOverview });
       void queryClient.invalidateQueries({ queryKey: qk.recentComments });
       void queryClient.invalidateQueries({ queryKey: qk.unread });
@@ -1227,6 +1239,7 @@ export default function ChatRoomScreen() {
           </View>
         ) : (
           <FlashList<Message>
+            ref={listRef}
             data={data}
             inverted
             getItemType={(item) =>
