@@ -1260,9 +1260,16 @@ export default function DashboardScreen() {
         if (item.is_completed_by_me) return false;
         if (!item.due_date) return true;
         const due = parseDue(item.due_date);
-        if (due && due.getTime() < now) return false;
+        if (!due) return true;
+        if (due.getTime() <= now) return false;
         const cd = dueCountdown(item.due_date, now, bells, item.subject_id);
         if (cd && cd.overdue) return false;
+        const dueDate = new Date(due.getTime());
+        const nowDate = new Date(now);
+        const dueDayNum = dueDate.getFullYear() * 10000 + (dueDate.getMonth() + 1) * 100 + dueDate.getDate();
+        const nowDayNum = nowDate.getFullYear() * 10000 + (nowDate.getMonth() + 1) * 100 + nowDate.getDate();
+        if (dueDayNum < nowDayNum) return false;
+        if (dueDayNum === nowDayNum && nowDate.getHours() >= 14) return false;
         return true;
       })
       .map((item) => ({ item, at: alignedDue(item) }))

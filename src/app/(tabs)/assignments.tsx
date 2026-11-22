@@ -1166,25 +1166,27 @@ export default function AssignmentsScreen() {
   const all = query.data ?? [];
   const completedCount = all.filter((item) => item.is_completed_by_me).length;
 
-  const isOverdueItem = (item: Assignment) => {
+  const isOverdueItem = (item: Assignment): boolean => {
     if (!item.due_date) return false;
     const due = parseDue(item.due_date);
     if (!due) return false;
-    if (due.getTime() < now) return true;
+    if (due.getTime() <= now) return true;
     const cd = dueCountdown(item.due_date, now, bells, item.subject_id);
     if (cd && cd.overdue) return true;
+    const dueDate = new Date(due.getTime());
+    const nowDate = new Date(now);
+    const dueDayNum = dueDate.getFullYear() * 10000 + (dueDate.getMonth() + 1) * 100 + dueDate.getDate();
+    const nowDayNum = nowDate.getFullYear() * 10000 + (nowDate.getMonth() + 1) * 100 + nowDate.getDate();
+    if (dueDayNum < nowDayNum) return true;
+    if (dueDayNum === nowDayNum && nowDate.getHours() >= 14) return true;
     return false;
   };
 
   const filtered = useMemo(() => {
-    let list = all;
-    if (filter === "active") {
-      list = list.filter((item) => {
-        if (item.is_completed_by_me) return false;
-        if (isOverdueItem(item)) return false;
-        return true;
-      });
-    }
+    // صفحه تکالیف جاری فقط و فقط شامل تکالیف فعال و دارای مهلت است.
+    // تمام تکالیف مهلت‌گذشته منحصراً در صفحه اختصاصی /overdue نمایش داده می‌شوند.
+    let list = all.filter((item) => !isOverdueItem(item));
+    if (filter === "active") list = list.filter((item) => !item.is_completed_by_me);
     if (filter === "done") list = list.filter((item) => item.is_completed_by_me);
     if (category === "project") list = list.filter((item) => item.subtype === "practical");
     else if (category) list = list.filter((item) => item.category === category);
@@ -1216,19 +1218,18 @@ export default function AssignmentsScreen() {
     return list;
   }, [filtered, sort, now, bells]);
 
-  const pending = all.filter((item) => !item.is_completed_by_me);
+  const pending = all.filter((item) => !item.is_completed_by_me && !isOverdueItem(item));
 
   const groups = useMemo(() => {
     const urgent: Assignment[] = [];
     const later: Assignment[] = [];
     const completed: Assignment[] = [];
     for (const item of displayed) {
+      if (isOverdueItem(item)) continue;
       if (item.is_completed_by_me) {
         completed.push(item);
         continue;
       }
-      // مهلت گذشته ناتمام → به هیچ وجه در فوری یا پیش‌رو نمایش داده نمی‌شود (فقط در صفحهٔ مهلت‌گذشته‌ها)
-      if (isOverdueItem(item)) continue;
       if (!item.due_date) {
         later.push(item);
         continue;
