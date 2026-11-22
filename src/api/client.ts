@@ -731,6 +731,16 @@ export interface BotSettingsResponse {
   bot_enabled: boolean;
   has_token: boolean;
   has_ai: boolean;
+  notify_top1_enabled?: boolean;
+  notify_top1_prompt?: string;
+  notify_new_assignment_enabled?: boolean;
+  notify_new_assignment_prompt?: string;
+  notify_deadline_enabled?: boolean;
+  notify_deadline_prompt?: string;
+  notify_overdue_pv_enabled?: boolean;
+  notify_overdue_pv_prompt?: string;
+  notify_overdue_group_enabled?: boolean;
+  notify_overdue_group_prompt?: string;
 }
 
 export async function getTelegramToken(): Promise<TelegramTokenResponse> {
@@ -760,6 +770,16 @@ export async function updateBotSettings(data: {
   ai_followup_anchor?: string;
   ai_temperature?: number;
   ai_max_tokens?: number;
+  notify_top1_enabled?: boolean;
+  notify_top1_prompt?: string;
+  notify_new_assignment_enabled?: boolean;
+  notify_new_assignment_prompt?: string;
+  notify_deadline_enabled?: boolean;
+  notify_deadline_prompt?: string;
+  notify_overdue_pv_enabled?: boolean;
+  notify_overdue_pv_prompt?: string;
+  notify_overdue_group_enabled?: boolean;
+  notify_overdue_group_prompt?: string;
 }): Promise<{ ok: boolean; settings: BotSettingsResponse }> {
   return request<{ ok: boolean; settings: BotSettingsResponse }>("/telegram/settings", {
     method: "PUT",

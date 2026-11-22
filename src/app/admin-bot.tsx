@@ -58,7 +58,7 @@ export default function AdminBotScreen() {
   const owner = isOwner(user);
   const staff = isStaff(user);
 
-  const [activeTab, setActiveTab] = useState<"prompt" | "ai" | "telegram">("prompt");
+  const [activeTab, setActiveTab] = useState<"prompt" | "events" | "ai" | "telegram">("prompt");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -71,6 +71,18 @@ export default function AdminBotScreen() {
   const [followupAnchor, setFollowupAnchor] = useState("");
   const [temperature, setTemperature] = useState("0.85");
   const [maxTokens, setMaxTokens] = useState("600");
+
+  // Tab: Events & Automated Messages
+  const [notifyTop1Enabled, setNotifyTop1Enabled] = useState(true);
+  const [notifyTop1Prompt, setNotifyTop1Prompt] = useState("");
+  const [notifyNewAssignmentEnabled, setNotifyNewAssignmentEnabled] = useState(true);
+  const [notifyNewAssignmentPrompt, setNotifyNewAssignmentPrompt] = useState("");
+  const [notifyDeadlineEnabled, setNotifyDeadlineEnabled] = useState(true);
+  const [notifyDeadlinePrompt, setNotifyDeadlinePrompt] = useState("");
+  const [notifyOverduePvEnabled, setNotifyOverduePvEnabled] = useState(true);
+  const [notifyOverduePvPrompt, setNotifyOverduePvPrompt] = useState("");
+  const [notifyOverdueGroupEnabled, setNotifyOverdueGroupEnabled] = useState(true);
+  const [notifyOverdueGroupPrompt, setNotifyOverdueGroupPrompt] = useState("");
 
   // Tab 2: AI Engine
   const [aiProvider, setAiProvider] = useState("openrouter");
@@ -105,6 +117,18 @@ export default function AdminBotScreen() {
           setTemperature(String(s.ai_temperature ?? 0.85));
           setMaxTokens(String(s.ai_max_tokens ?? 600));
           setBotEnabled(s.bot_enabled ?? true);
+
+          // Automated events
+          setNotifyTop1Enabled(s.notify_top1_enabled ?? true);
+          setNotifyTop1Prompt(s.notify_top1_prompt || "");
+          setNotifyNewAssignmentEnabled(s.notify_new_assignment_enabled ?? true);
+          setNotifyNewAssignmentPrompt(s.notify_new_assignment_prompt || "");
+          setNotifyDeadlineEnabled(s.notify_deadline_enabled ?? true);
+          setNotifyDeadlinePrompt(s.notify_deadline_prompt || "");
+          setNotifyOverduePvEnabled(s.notify_overdue_pv_enabled ?? true);
+          setNotifyOverduePvPrompt(s.notify_overdue_pv_prompt || "");
+          setNotifyOverdueGroupEnabled(s.notify_overdue_group_enabled ?? true);
+          setNotifyOverdueGroupPrompt(s.notify_overdue_group_prompt || "");
         }
       } catch {
         // fallback
@@ -172,6 +196,16 @@ export default function AdminBotScreen() {
               setFollowupAnchor(res.settings.ai_followup_anchor || "");
               setTemperature(String(res.settings.ai_temperature ?? 0.7));
               setMaxTokens(String(res.settings.ai_max_tokens ?? 1000));
+              setNotifyTop1Enabled(res.settings.notify_top1_enabled ?? true);
+              setNotifyTop1Prompt(res.settings.notify_top1_prompt || "");
+              setNotifyNewAssignmentEnabled(res.settings.notify_new_assignment_enabled ?? true);
+              setNotifyNewAssignmentPrompt(res.settings.notify_new_assignment_prompt || "");
+              setNotifyDeadlineEnabled(res.settings.notify_deadline_enabled ?? true);
+              setNotifyDeadlinePrompt(res.settings.notify_deadline_prompt || "");
+              setNotifyOverduePvEnabled(res.settings.notify_overdue_pv_enabled ?? true);
+              setNotifyOverduePvPrompt(res.settings.notify_overdue_pv_prompt || "");
+              setNotifyOverdueGroupEnabled(res.settings.notify_overdue_group_enabled ?? true);
+              setNotifyOverdueGroupPrompt(res.settings.notify_overdue_group_prompt || "");
               void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
               setFeedback({ success: true, message: "پرامپت با موفقیت به حالت اولیه بازنشانی شد." });
             } catch (err: any) {
@@ -202,6 +236,16 @@ export default function AdminBotScreen() {
         ai_temperature: parseFloat(temperature) || 0.85,
         ai_max_tokens: parseInt(maxTokens, 10) || 600,
         bot_enabled: botEnabled,
+        notify_top1_enabled: notifyTop1Enabled,
+        notify_top1_prompt: notifyTop1Prompt,
+        notify_new_assignment_enabled: notifyNewAssignmentEnabled,
+        notify_new_assignment_prompt: notifyNewAssignmentPrompt,
+        notify_deadline_enabled: notifyDeadlineEnabled,
+        notify_deadline_prompt: notifyDeadlinePrompt,
+        notify_overdue_pv_enabled: notifyOverduePvEnabled,
+        notify_overdue_pv_prompt: notifyOverduePvPrompt,
+        notify_overdue_group_enabled: notifyOverdueGroupEnabled,
+        notify_overdue_group_prompt: notifyOverdueGroupPrompt,
       });
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       setFeedback({ success: true, message: "تنظیمات پرامپت، مدل هوش مصنوعی و ربات با موفقیت ذخیره شد! ✅" });
@@ -283,7 +327,26 @@ export default function AdminBotScreen() {
                   activeTab === "prompt" && styles.tabTextActive,
                 ]}
               >
-                پرامپت و لحن
+                پرامپت
+              </AppText>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setActiveTab("events")}
+              style={[styles.tabItem, activeTab === "events" && styles.tabItemActive]}
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={14}
+                color={activeTab === "events" ? colors.white : colors.faint}
+              />
+              <AppText
+                style={[
+                  styles.tabText,
+                  activeTab === "events" && styles.tabTextActive,
+                ]}
+              >
+                رویدادها
               </AppText>
             </Pressable>
 
@@ -434,6 +497,157 @@ export default function AdminBotScreen() {
                   numberOfLines={4}
                   style={[styles.textInput, { minHeight: 70 }]}
                   placeholder="دستور نحوه ارائه خروجی ابزارها..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+            </View>
+          )}
+
+          {!loading && activeTab === "events" && (
+            <View>
+              <Kicker text="automated event announcements" dot style={{ marginBottom: 8 }} />
+
+              {/* 1. Top 1 Leaderboard Shift */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// TOP 1 LEADERBOARD SHIFT</MonoLabel>
+                  <Switch
+                    value={notifyTop1Enabled}
+                    onValueChange={setNotifyTop1Enabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyTop1Enabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  تغییر صدرنشین و رتبه ۱ کلاس در لیدربورد
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هوش مصنوعی هنگام جابه‌جا شدن رتبه ۱ جدول در گروه:
+                </AppText>
+                <TextInput
+                  value={notifyTop1Prompt}
+                  onChangeText={setNotifyTop1Prompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای تبریک و کل‌کل تغییر رتبه یک..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 2. New Assignment Announcement */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// NEW ASSIGNMENT ALERT</MonoLabel>
+                  <Switch
+                    value={notifyNewAssignmentEnabled}
+                    onValueChange={setNotifyNewAssignmentEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyNewAssignmentEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  ثبت تکلیف یا یادآوری جدید
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هوش مصنوعی برای اطلاع‌رسانی تکلیف جدید در گروه:
+                </AppText>
+                <TextInput
+                  value={notifyNewAssignmentPrompt}
+                  onChangeText={setNotifyNewAssignmentPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای اعلام تکلیف جدید..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 3. Approaching Deadline Reminder */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// APPROACHING DEADLINE</MonoLabel>
+                  <Switch
+                    value={notifyDeadlineEnabled}
+                    onValueChange={setNotifyDeadlineEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyDeadlineEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  یادآوری نزدیک شدن ددلاین
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هشدار فرارسیدن موعد تحویل در گروه کلاس:
+                </AppText>
+                <TextInput
+                  value={notifyDeadlinePrompt}
+                  onChangeText={setNotifyDeadlinePrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای اخطار ددلاین نزدیک..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 4. Overdue PV Follow-up */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// OVERDUE PV FOLLOW-UP</MonoLabel>
+                  <Switch
+                    value={notifyOverduePvEnabled}
+                    onValueChange={setNotifyOverduePvEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyOverduePvEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  پیام خودکار به پیوی دانش‌آموز پس از اتمام مهلت
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پیام هوش مصنوعی در چت خصوصی (پیوی) به کسانی که مهلت تکلیفشان تمام شده و تیک نزده‌اند:
+                </AppText>
+                <TextInput
+                  value={notifyOverduePvPrompt}
+                  onChangeText={setNotifyOverduePvPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای پیگیری تکلیف در پیوی..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 5. Overdue Group Callout */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// OVERDUE GROUP CALLOUT</MonoLabel>
+                  <Switch
+                    value={notifyOverdueGroupEnabled}
+                    onValueChange={setNotifyOverdueGroupEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyOverdueGroupEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  صدا زدن و تگ کردن افراد عقب‌افتاده در گروه کلاس
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پیام هوش مصنوعی در گروه که بچه‌های انجام‌نداده را تگ می‌کند و می‌گوید بیایند پیوی:
+                </AppText>
+                <TextInput
+                  value={notifyOverdueGroupPrompt}
+                  onChangeText={setNotifyOverdueGroupPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای منشن و فراخوانی به پیوی در گروه..."
                   placeholderTextColor={colors.faint}
                   textAlignVertical="top"
                 />
@@ -620,6 +834,157 @@ export default function AdminBotScreen() {
             </View>
           )}
 
+          {!loading && activeTab === "events" && (
+            <View>
+              <Kicker text="automated event announcements" dot style={{ marginBottom: 8 }} />
+
+              {/* 1. Top 1 Leaderboard Shift */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// TOP 1 LEADERBOARD SHIFT</MonoLabel>
+                  <Switch
+                    value={notifyTop1Enabled}
+                    onValueChange={setNotifyTop1Enabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyTop1Enabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  تغییر صدرنشین و رتبه ۱ کلاس در لیدربورد
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هوش مصنوعی هنگام جابه‌جا شدن رتبه ۱ جدول در گروه:
+                </AppText>
+                <TextInput
+                  value={notifyTop1Prompt}
+                  onChangeText={setNotifyTop1Prompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای تبریک و کل‌کل تغییر رتبه یک..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 2. New Assignment Announcement */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// NEW ASSIGNMENT ALERT</MonoLabel>
+                  <Switch
+                    value={notifyNewAssignmentEnabled}
+                    onValueChange={setNotifyNewAssignmentEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyNewAssignmentEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  ثبت تکلیف یا یادآوری جدید
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هوش مصنوعی برای اطلاع‌رسانی تکلیف جدید در گروه:
+                </AppText>
+                <TextInput
+                  value={notifyNewAssignmentPrompt}
+                  onChangeText={setNotifyNewAssignmentPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای اعلام تکلیف جدید..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 3. Approaching Deadline Reminder */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// APPROACHING DEADLINE</MonoLabel>
+                  <Switch
+                    value={notifyDeadlineEnabled}
+                    onValueChange={setNotifyDeadlineEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyDeadlineEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  یادآوری نزدیک شدن ددلاین
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هشدار فرارسیدن موعد تحویل در گروه کلاس:
+                </AppText>
+                <TextInput
+                  value={notifyDeadlinePrompt}
+                  onChangeText={setNotifyDeadlinePrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای اخطار ددلاین نزدیک..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 4. Overdue PV Follow-up */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// OVERDUE PV FOLLOW-UP</MonoLabel>
+                  <Switch
+                    value={notifyOverduePvEnabled}
+                    onValueChange={setNotifyOverduePvEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyOverduePvEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  پیام خودکار به پیوی دانش‌آموز پس از اتمام مهلت
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پیام هوش مصنوعی در چت خصوصی (پیوی) به کسانی که مهلت تکلیفشان تمام شده و تیک نزده‌اند:
+                </AppText>
+                <TextInput
+                  value={notifyOverduePvPrompt}
+                  onChangeText={setNotifyOverduePvPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای پیگیری تکلیف در پیوی..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 5. Overdue Group Callout */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// OVERDUE GROUP CALLOUT</MonoLabel>
+                  <Switch
+                    value={notifyOverdueGroupEnabled}
+                    onValueChange={setNotifyOverdueGroupEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyOverdueGroupEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  صدا زدن و تگ کردن افراد عقب‌افتاده در گروه کلاس
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پیام هوش مصنوعی در گروه که بچه‌های انجام‌نداده را تگ می‌کند و می‌گوید بیایند پیوی:
+                </AppText>
+                <TextInput
+                  value={notifyOverdueGroupPrompt}
+                  onChangeText={setNotifyOverdueGroupPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای منشن و فراخوانی به پیوی در گروه..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+            </View>
+          )}
+
           {!loading && activeTab === "telegram" && (
             <View>
               <Kicker text="telegram bot connection" dot style={{ marginBottom: 8 }} />
@@ -684,6 +1049,157 @@ export default function AdminBotScreen() {
                   variant="ghost"
                   disabled={testing}
                   onPress={handleTest}
+                />
+              </Panel>
+            </View>
+          )}
+
+          {!loading && activeTab === "events" && (
+            <View>
+              <Kicker text="automated event announcements" dot style={{ marginBottom: 8 }} />
+
+              {/* 1. Top 1 Leaderboard Shift */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// TOP 1 LEADERBOARD SHIFT</MonoLabel>
+                  <Switch
+                    value={notifyTop1Enabled}
+                    onValueChange={setNotifyTop1Enabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyTop1Enabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  تغییر صدرنشین و رتبه ۱ کلاس در لیدربورد
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هوش مصنوعی هنگام جابه‌جا شدن رتبه ۱ جدول در گروه:
+                </AppText>
+                <TextInput
+                  value={notifyTop1Prompt}
+                  onChangeText={setNotifyTop1Prompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای تبریک و کل‌کل تغییر رتبه یک..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 2. New Assignment Announcement */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// NEW ASSIGNMENT ALERT</MonoLabel>
+                  <Switch
+                    value={notifyNewAssignmentEnabled}
+                    onValueChange={setNotifyNewAssignmentEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyNewAssignmentEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  ثبت تکلیف یا یادآوری جدید
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هوش مصنوعی برای اطلاع‌رسانی تکلیف جدید در گروه:
+                </AppText>
+                <TextInput
+                  value={notifyNewAssignmentPrompt}
+                  onChangeText={setNotifyNewAssignmentPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای اعلام تکلیف جدید..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 3. Approaching Deadline Reminder */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// APPROACHING DEADLINE</MonoLabel>
+                  <Switch
+                    value={notifyDeadlineEnabled}
+                    onValueChange={setNotifyDeadlineEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyDeadlineEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  یادآوری نزدیک شدن ددلاین
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پرامپت و لحن هشدار فرارسیدن موعد تحویل در گروه کلاس:
+                </AppText>
+                <TextInput
+                  value={notifyDeadlinePrompt}
+                  onChangeText={setNotifyDeadlinePrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای اخطار ددلاین نزدیک..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 4. Overdue PV Follow-up */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// OVERDUE PV FOLLOW-UP</MonoLabel>
+                  <Switch
+                    value={notifyOverduePvEnabled}
+                    onValueChange={setNotifyOverduePvEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyOverduePvEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  پیام خودکار به پیوی دانش‌آموز پس از اتمام مهلت
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پیام هوش مصنوعی در چت خصوصی (پیوی) به کسانی که مهلت تکلیفشان تمام شده و تیک نزده‌اند:
+                </AppText>
+                <TextInput
+                  value={notifyOverduePvPrompt}
+                  onChangeText={setNotifyOverduePvPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای پیگیری تکلیف در پیوی..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
+                />
+              </Panel>
+
+              {/* 5. Overdue Group Callout */}
+              <Panel corners contentStyle={styles.cardPad} style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <MonoLabel>// OVERDUE GROUP CALLOUT</MonoLabel>
+                  <Switch
+                    value={notifyOverdueGroupEnabled}
+                    onValueChange={setNotifyOverdueGroupEnabled}
+                    trackColor={{ false: "rgba(255,255,255,0.15)", true: colors.white }}
+                    thumbColor={notifyOverdueGroupEnabled ? colors.black : colors.faint}
+                  />
+                </View>
+                <AppText style={{ fontFamily: fonts.bold, fontSize: 13, marginBottom: 4 }}>
+                  صدا زدن و تگ کردن افراد عقب‌افتاده در گروه کلاس
+                </AppText>
+                <AppText color={colors.faint} style={{ fontSize: 11, lineHeight: 18, marginBottom: 8 }}>
+                  پیام هوش مصنوعی در گروه که بچه‌های انجام‌نداده را تگ می‌کند و می‌گوید بیایند پیوی:
+                </AppText>
+                <TextInput
+                  value={notifyOverdueGroupPrompt}
+                  onChangeText={setNotifyOverdueGroupPrompt}
+                  multiline
+                  numberOfLines={4}
+                  style={[styles.textInput, { minHeight: 70 }]}
+                  placeholder="دستور هوش مصنوعی برای منشن و فراخوانی به پیوی در گروه..."
+                  placeholderTextColor={colors.faint}
+                  textAlignVertical="top"
                 />
               </Panel>
             </View>

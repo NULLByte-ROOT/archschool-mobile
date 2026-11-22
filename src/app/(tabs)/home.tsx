@@ -33,6 +33,7 @@ import {
 } from "@/api/client";
 import type { Assignment, DailyActivity, LeaderboardEntry, Message } from "@/api/types";
 import { SchoolStatusCard } from "@/components/SchoolStatusCard";
+import { SkeletonBox, LeaderboardItemSkeleton } from "@/components/Skeleton";
 import { Screen } from "@/components/Screen";
 import { TodayScheduleCard } from "@/components/TodayScheduleCard";
 import { AppText, Avatar } from "@/components/ui";
@@ -644,10 +645,10 @@ function TopThree({
       />
 
       {loading && entries.length === 0 ? (
-        <View style={st.centerBox}>
-          <AppText color={colors.faint} style={{ fontSize: 11 }}>
-            در حال بارگذاری…
-          </AppText>
+        <View style={{ gap: 6 }}>
+          {[0, 1, 2].map((idx) => (
+            <LeaderboardItemSkeleton key={idx} />
+          ))}
         </View>
       ) : entries.length === 0 ? (
         <View style={st.centerBox}>
@@ -782,10 +783,10 @@ function FocusPanel({
       </View>
 
       {loading && next.length === 0 ? (
-        <View style={st.centerBox}>
-          <AppText color={colors.faint} style={{ fontSize: 11 }}>
-            در حال بارگذاری…
-          </AppText>
+        <View style={{ gap: 6 }}>
+          {[0, 1].map((idx) => (
+            <SkeletonBox key={idx} width="100%" height={48} borderRadius={12} />
+          ))}
         </View>
       ) : next.length === 0 ? (
         <View style={st.centerBox}>

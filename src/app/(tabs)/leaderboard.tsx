@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fetchLeaderboard, qk } from "@/api/client";
 import type { LeaderboardEntry, Role } from "@/api/types";
 import { EmptyState } from "@/components/cards";
+import { LeaderboardItemSkeleton } from "@/components/Skeleton";
 import { Screen } from "@/components/Screen";
 import { AppText, Avatar } from "@/components/ui";
 import { UserProfileModal } from "@/components/UserProfileModal";
@@ -530,12 +531,11 @@ export default function LeaderboardScreen() {
 
         {/* table */}
         {query.isLoading && entries.length === 0 ? (
-          <Panel corners contentStyle={styles.loadingBox} style={{ marginTop: 4 }}>
-            <ActivityIndicator color={colors.textSoft} />
-            <AppText color={colors.faint} style={{ fontSize: 13 }}>
-              در حال بارگذاری…
-            </AppText>
-          </Panel>
+          <View style={{ gap: 8, marginTop: 4 }}>
+            {[0, 1, 2, 3, 4, 5].map((idx) => (
+              <LeaderboardItemSkeleton key={idx} />
+            ))}
+          </View>
         ) : query.isError && entries.length === 0 ? (
           <Panel corners contentStyle={styles.emptyBox}>
             <AppText style={{ fontFamily: fonts.semibold, fontSize: 14 }}>

@@ -33,7 +33,7 @@ import {
   isImageAttachment,
 } from "@/components/AssignmentImageCarousel";
 import { ImageViewer, type ViewerImage } from "@/components/ImageViewer";
-import { CelebrationBurst } from "@/components/CelebrationBurst";
+import { AssignmentCardSkeleton } from "@/components/Skeleton";
 import { AreaChart, Donut, SegmentedBar } from "@/components/charts";
 import { SchoolStatusStrip } from "@/components/SchoolStatusStrip";
 import { Screen } from "@/components/Screen";
@@ -1090,8 +1090,6 @@ export default function AssignmentsScreen() {
   });
   const overdueCount = overdueQuery.data?.length ?? 0;
 
-  const [showCelebration, setShowCelebration] = useState(false);
-
   useFocusEffect(
     useCallback(() => {
       void queryClient.invalidateQueries({ queryKey: qk.assignments });
@@ -1137,10 +1135,6 @@ export default function AssignmentsScreen() {
         (old ?? []).map((item) => (item.id === updated.id ? updated : item))
       );
       if (updated.is_completed_by_me) {
-        try {
-          Vibration.vibrate(1000);
-        } catch {}
-        setShowCelebration(true);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       } else {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
@@ -1174,13 +1168,20 @@ export default function AssignmentsScreen() {
 
   const filtered = useMemo(() => {
     let list = all;
-    if (filter === "active") list = list.filter((item) => !item.is_completed_by_me);
+    if (filter === "active") {
+      list = list.filter((item) => {
+        if (item.is_completed_by_me) return false;
+        const due = parseDue(item.due_date);
+        if (due && due.getTime() < now) return false;
+        return true;
+      });
+    }
     if (filter === "done") list = list.filter((item) => item.is_completed_by_me);
     if (category === "project") list = list.filter((item) => item.subtype === "practical");
     else if (category) list = list.filter((item) => item.category === category);
     if (subject) list = list.filter((item) => item.subject_id === subject);
     return list;
-  }, [all, category, filter, subject]);
+  }, [all, category, filter, subject, now]);
 
   const displayed = useMemo(() => {
     const list = [...filtered];
@@ -1468,7 +1469,7 @@ export default function AssignmentsScreen() {
         {query.isLoading && all.length === 0 ? (
           <View style={{ gap: 12 }}>
             {[0, 1, 2, 3].map((index) => (
-              <View key={index} style={styles.skeleton} />
+              <AssignmentCardSkeleton key={index} />
             ))}
           </View>
         ) : query.isError && all.length === 0 ? (
@@ -1645,11 +1646,6 @@ export default function AssignmentsScreen() {
         images={viewerState.images}
         index={viewerState.index}
         onClose={() => setViewerState((prev) => ({ ...prev, visible: false }))}
-      />
-
-      <CelebrationBurst
-        active={showCelebration}
-        onFinish={() => setShowCelebration(false)}
       />
     </Screen>
   );
