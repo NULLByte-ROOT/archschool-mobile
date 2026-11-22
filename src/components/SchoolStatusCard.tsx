@@ -131,11 +131,23 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
     return { nextDay: TIMETABLE[(index + 1) % TIMETABLE.length], isWeekend: false };
   }, [now]);
 
-  const nextDayRows = useMemo(() => {
+  const isBreak = state.state === "break";
+  const isClass = state.state === "class";
+  const isAfter = state.state === "after";
+  const isHoliday = state.state === "holiday";
+  const isBefore = state.state === "before";
+
+  // When countdown starts (before first bell, during classes, during breaks),
+  // show TODAY's schedule until classes finish. Once classes are finished (after) or on weekends/holidays,
+  // show NEXT DAY's schedule as before.
+  const isCountdownActive = Boolean(day && (isBefore || isClass || isBreak));
+  const displayDay = isCountdownActive && day ? day : nextDay;
+
+  const displayRows = useMemo(() => {
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
 
-    return flattenDay(nextDay)
+    return flattenDay(displayDay)
       .filter((entry) => entry.subject)
       .map((entry) => {
         const list = (bySubject[entry.subject!.id] ?? []).filter(
@@ -157,15 +169,9 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
           tone: upcomingList.length ? dueTone(upcomingList[0].due_date) : ("none" as const),
         };
       });
-  }, [bySubject, nextDay, now]);
+  }, [bySubject, displayDay, now]);
 
-  const totalEvents = nextDayRows.reduce((sum, row) => sum + row.events.length, 0);
-
-  const isBreak = state.state === "break";
-  const isClass = state.state === "class";
-  const isAfter = state.state === "after";
-  const isHoliday = state.state === "holiday";
-  const isBefore = state.state === "before";
+  const totalEvents = displayRows.reduce((sum, row) => sum + row.events.length, 0);
 
   let accentColor: string = colors.white;
   let statusBadgeText = "وضعیت کلاس";
@@ -256,7 +262,7 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
   return (
     <Panel
       onPress={onPress}
-      accessibilityLabel="وضعیت کلاس و برنامه روز بعد"
+      accessibilityLabel={isCountdownActive ? "وضعیت کلاس و برنامه امروز" : "وضعیت کلاس و برنامه روز بعد"}
       corners
       cornerTone={cornerTone}
       style={[styles.card, { borderColor: cardBorderColor }]}
@@ -348,7 +354,7 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
         </View>
       ) : null}
 
-      {/* Integrated Next Day Section */}
+      {/* Integrated Schedule Section (Today's schedule during countdown/classes, Next Day's schedule after school finishes) */}
       {showNextDay ? (
         <View style={styles.nextDaySection}>
           <View style={styles.dividerLine} />
@@ -360,102 +366,130 @@ export function SchoolStatusCard({ onPress, showNextDay = true }: SchoolStatusCa
               </View>
               <View style={{ gap: 1 }}>
                 <AppText style={styles.nextDayMainTitle}>
-                  {isWeekend ? "برنامه بعد از تعطیلات" : "برنامه روز بعد"}
+                  {isCountdownActive ? "برنامه امروز" : isWeekend ? "برنامه بعد از تعطیلات" : "برنامه روز بعد"}
                 </AppText>
-                <MonoLabel tone={colors.faint}>{`// NEXT DAY · ${nextDay.name.toUpperCase()}`}</MonoLabel>
+                <MonoLabel tone={colors.faint}>{`// ${isCountdownActive ? "TODAY" : "NEXT DAY"} · ${displayDay.name.toUpperCase()}`}</MonoLabel>
               </View>
             </View>
 
             <View style={styles.nextDayBadge}>
               <PulseDot size={5} tone={colors.white} glow={false} />
               <AppText color={colors.textSoft} style={styles.nextDayBadgeText}>
-                {nextDay.name}
+                {displayDay.name}
                 {totalEvents > 0 ? ` · ${fmtNum(totalEvents)} رویداد` : ""}
               </AppText>
             </View>
           </View>
 
-          {nextDayRows.length === 0 ? (
+          {displayRows.length === 0 ? (
             <View style={styles.emptyNextBox}>
               <Ionicons name="moon-outline" size={22} color={colors.faint} />
               <AppText align="center" color={colors.faint} style={styles.emptyNextText}>
-                روز بعد کلاسی نداریم
+                {isCountdownActive ? "امروز کلاسی نداریم" : "روز بعد کلاسی نداریم"}
               </AppText>
             </View>
           ) : (
             <View style={styles.nextRowsList}>
-              {nextDayRows.map((row) => (
-                <View
-                  key={row.id}
-                  style={[
-                    styles.nextRow,
-                    row.events.length > 0 && { borderColor: TONE_BORDER[row.tone] },
-                  ]}
-                >
+              {displayRows.map((row, index) => {
+                const isCurrentBell = isCountdownActive && isClass && state.bellIndex === index;
+                const isNextBell = isCountdownActive && isBreak && state.nextBellIndex === index;
+
+                return (
                   <View
+                    key={`${row.id}-${index}`}
                     style={[
-                      styles.nextIconTile,
-                      row.exam && {
-                        borderColor: colors.dangerLine,
-                        backgroundColor: colors.dangerSoft,
-                      },
+                      styles.nextRow,
+                      row.events.length > 0 && { borderColor: TONE_BORDER[row.tone] },
+                      isCurrentBell && { borderColor: `${accentColor}80`, backgroundColor: `${accentColor}12` },
+                      isNextBell && { borderColor: `${colors.success}60`, backgroundColor: `${colors.success}08` },
                     ]}
                   >
-                    <Ionicons
-                      name={row.exam ? "school-outline" : "book-outline"}
-                      size={16}
-                      color={row.exam ? colors.danger : colors.white}
-                    />
-                  </View>
-
-                  <View style={styles.nextRowText}>
-                    <AppText numberOfLines={1} style={styles.nextSubjectName}>
-                      {row.subject.name}
-                    </AppText>
-                    <AppText
-                      numberOfLines={1}
-                      color={colors.faint}
-                      style={styles.nextSubjectDetail}
-                    >
-                      {row.subject.teacher} · {row.label}
-                    </AppText>
-                  </View>
-
-                  {row.events.length > 0 ? (
                     <View
                       style={[
-                        styles.nextChip,
-                        {
-                          borderColor: row.exam ? colors.dangerLine : colors.white12,
-                          backgroundColor: row.exam ? colors.dangerSoft : colors.white04,
+                        styles.nextIconTile,
+                        row.exam && {
+                          borderColor: colors.dangerLine,
+                          backgroundColor: colors.dangerSoft,
+                        },
+                        isCurrentBell && {
+                          borderColor: `${accentColor}80`,
+                          backgroundColor: `${accentColor}25`,
                         },
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.eventDot,
-                          {
-                            backgroundColor: row.exam ? colors.danger : TONE_COLOR[row.tone],
-                          },
-                        ]}
+                      <Ionicons
+                        name={row.exam ? "school-outline" : isCurrentBell ? "flash-outline" : "book-outline"}
+                        size={16}
+                        color={row.exam ? colors.danger : isCurrentBell ? accentColor : colors.white}
                       />
+                    </View>
+
+                    <View style={styles.nextRowText}>
+                      <View style={{ flexDirection: "row-reverse", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                        <AppText numberOfLines={1} style={styles.nextSubjectName}>
+                          {row.subject.name}
+                        </AppText>
+                        {isCurrentBell ? (
+                          <View style={styles.liveTag}>
+                            <PulseDot size={4} tone={accentColor} glow />
+                            <AppText color={accentColor} style={styles.liveTagText}>
+                              در حال برگزاری
+                            </AppText>
+                          </View>
+                        ) : isNextBell ? (
+                          <View style={[styles.liveTag, { borderColor: `${colors.success}40`, backgroundColor: `${colors.success}15` }]}>
+                            <PulseDot size={4} tone={colors.success} />
+                            <AppText color={colors.success} style={styles.liveTagText}>
+                              زنگ بعد
+                            </AppText>
+                          </View>
+                        ) : null}
+                      </View>
                       <AppText
-                        color={row.exam ? colors.danger : colors.textSoft}
-                        style={styles.nextChipText}
+                        numberOfLines={1}
+                        color={colors.faint}
+                        style={styles.nextSubjectDetail}
                       >
-                        {row.exam ? "امتحان" : "تکلیف"}
-                      </AppText>
-                      <AppText
-                        ltr
-                        color={row.exam ? colors.danger : colors.textSoft}
-                        style={styles.nextChipNum}
-                      >
-                        {fmtNum(row.events.length)}
+                        {row.subject.teacher} · {row.label}
                       </AppText>
                     </View>
-                  ) : null}
-                </View>
-              ))}
+
+                    {row.events.length > 0 ? (
+                      <View
+                        style={[
+                          styles.nextChip,
+                          {
+                            borderColor: row.exam ? colors.dangerLine : colors.white12,
+                            backgroundColor: row.exam ? colors.dangerSoft : colors.white04,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.eventDot,
+                            {
+                              backgroundColor: row.exam ? colors.danger : TONE_COLOR[row.tone],
+                            },
+                          ]}
+                        />
+                        <AppText
+                          color={row.exam ? colors.danger : colors.textSoft}
+                          style={styles.nextChipText}
+                        >
+                          {row.exam ? "امتحان" : "تکلیف"}
+                        </AppText>
+                        <AppText
+                          ltr
+                          color={row.exam ? colors.danger : colors.textSoft}
+                          style={styles.nextChipNum}
+                        >
+                          {fmtNum(row.events.length)}
+                        </AppText>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -707,6 +741,23 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     lineHeight: 13,
     fontVariant: ["tabular-nums"],
+  },
+
+  liveTag: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: "rgba(56,189,248,0.40)",
+    backgroundColor: "rgba(56,189,248,0.12)",
+  },
+  liveTagText: {
+    fontFamily: fonts.medium,
+    fontSize: 9.5,
+    lineHeight: 13,
   },
 
   /* Empty Box */

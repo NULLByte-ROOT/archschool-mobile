@@ -35,7 +35,6 @@ import type { Assignment, DailyActivity, LeaderboardEntry, Message } from "@/api
 import { SchoolStatusCard } from "@/components/SchoolStatusCard";
 import { SkeletonBox, LeaderboardItemSkeleton } from "@/components/Skeleton";
 import { Screen } from "@/components/Screen";
-import { TodayScheduleCard } from "@/components/TodayScheduleCard";
 import { AppText, Avatar } from "@/components/ui";
 import {
   IconTile,
@@ -1453,7 +1452,6 @@ export default function DashboardScreen() {
             trend={overview.data?.weekly_trend ?? []}
             onOpen={() => router.push("/leaderboard")}
           />
-          <TodayScheduleCard onPress={() => router.push("/timetable")} />
         </View>
       </ScrollView>
     </Screen>
