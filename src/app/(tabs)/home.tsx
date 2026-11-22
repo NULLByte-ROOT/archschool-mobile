@@ -1258,8 +1258,12 @@ export default function DashboardScreen() {
     return (assignments.data ?? [])
       .filter((item) => {
         if (item.is_completed_by_me) return false;
+        if (!item.due_date) return true;
         const due = parseDue(item.due_date);
-        return !due || due.getTime() >= now;
+        if (due && due.getTime() < now) return false;
+        const cd = dueCountdown(item.due_date, now, bells, item.subject_id);
+        if (cd && cd.overdue) return false;
+        return true;
       })
       .map((item) => ({ item, at: alignedDue(item) }))
       .sort((a, b) => a.at - b.at)

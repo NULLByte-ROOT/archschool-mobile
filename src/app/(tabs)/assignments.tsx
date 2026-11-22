@@ -1166,13 +1166,22 @@ export default function AssignmentsScreen() {
   const all = query.data ?? [];
   const completedCount = all.filter((item) => item.is_completed_by_me).length;
 
+  const isOverdueItem = (item: Assignment) => {
+    if (!item.due_date) return false;
+    const due = parseDue(item.due_date);
+    if (!due) return false;
+    if (due.getTime() < now) return true;
+    const cd = dueCountdown(item.due_date, now, bells, item.subject_id);
+    if (cd && cd.overdue) return true;
+    return false;
+  };
+
   const filtered = useMemo(() => {
     let list = all;
     if (filter === "active") {
       list = list.filter((item) => {
         if (item.is_completed_by_me) return false;
-        const due = parseDue(item.due_date);
-        if (due && due.getTime() < now) return false;
+        if (isOverdueItem(item)) return false;
         return true;
       });
     }
@@ -1181,7 +1190,7 @@ export default function AssignmentsScreen() {
     else if (category) list = list.filter((item) => item.category === category);
     if (subject) list = list.filter((item) => item.subject_id === subject);
     return list;
-  }, [all, category, filter, subject, now]);
+  }, [all, category, filter, subject, now, bells]);
 
   const displayed = useMemo(() => {
     const list = [...filtered];
@@ -1214,21 +1223,20 @@ export default function AssignmentsScreen() {
     const later: Assignment[] = [];
     const completed: Assignment[] = [];
     for (const item of displayed) {
-      // مهلت گذشته → فقط در صفحهٔ «تکالیف مهلت گذشته» (حتی اگر انجام شده باشد)
-      const due = parseDue(item.due_date);
-      if (due && due.getTime() < now) continue;
       if (item.is_completed_by_me) {
         completed.push(item);
         continue;
       }
-      if (!due) {
+      // مهلت گذشته ناتمام → به هیچ وجه در فوری یا پیش‌رو نمایش داده نمی‌شود (فقط در صفحهٔ مهلت‌گذشته‌ها)
+      if (isOverdueItem(item)) continue;
+      if (!item.due_date) {
         later.push(item);
         continue;
       }
       const countdown = dueCountdown(item.due_date, now, bells, item.subject_id);
       if (!countdown) {
         later.push(item);
-      } else if (countdown.urgent || countdown.overdue) {
+      } else if (countdown.urgent && !countdown.overdue) {
         urgent.push(item);
       } else {
         later.push(item);
@@ -1244,11 +1252,7 @@ export default function AssignmentsScreen() {
   const upcoming = useMemo(
     () =>
       [...pending]
-        .filter((item) => {
-          const due = parseDue(item.due_date);
-          // مهلت‌گذشته‌ها فقط در صفحهٔ اختصاصی دیده می‌شوند
-          return Boolean(due) && due!.getTime() >= now;
-        })
+        .filter((item) => !isOverdueItem(item))
         .sort((a, b) => alignedDeadline(a, now, bells) - alignedDeadline(b, now, bells))
         .slice(0, 5),
     [pending, now, bells]
@@ -1466,7 +1470,7 @@ export default function AssignmentsScreen() {
         </Panel>
 
         {/* list */}
-        {query.isLoading && all.length === 0 ? (
+        {(query.isLoading || query.isPending) && all.length === 0 ? (
           <View style={{ gap: 12 }}>
             {[0, 1, 2, 3].map((index) => (
               <AssignmentCardSkeleton key={index} />
